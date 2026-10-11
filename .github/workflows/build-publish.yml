@@ -121,6 +121,7 @@ jobs:
         run: |
           shellcheck scripts/*.sh
           bash scripts/test-package.sh
+          bash scripts/test-github-release.sh
           bash scripts/package-native.sh target/zrlog-updater dist "${VERSION}" "${CHANNEL}"
           archive=$(bash scripts/validate-package.sh "dist/last.updater.Linux-${ARCH}.version.json" "${VERSION}" "${SOURCE_COMMIT}" "${CHANNEL}")
           unzip -q "$archive" -d /tmp/updater-package-roundtrip

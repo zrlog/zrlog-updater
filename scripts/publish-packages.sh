@@ -73,17 +73,10 @@ else
   [[ $ref_count == 1 ]]
   [[ $(gh api "repos/$repo/commits/$tag" --jq .sha) == "$commit" ]]
 fi
-# Distinguish absent release from transport/authorization errors.
-gh api --paginate "repos/$repo/releases?per_page=100" --slurp > "$tmp/releases.json"
-jq --arg tag "$tag" '[.[][] | select(.tag_name == $tag)]' "$tmp/releases.json" > "$tmp/release-list.json"
-if [[ $(jq length "$tmp/release-list.json") == 0 ]]; then
-  printf 'Standalone ZrLog Docker Compose updater %s.\n\nNative ZIPs for Linux AMD64 and ARM64; SHA-256, SBOM and Sigstore evidence are attached.\n' "$version" > "$tmp/notes.md"
-  flags=()
-  [[ $channel != preview ]] || flags+=(--prerelease)
-  gh release create "$tag" --repo "$repo" --verify-tag --draft --title "ZrLog updater $version" \
-    --notes-file "$tmp/notes.md" "${flags[@]}"
-fi
-gh api "repos/$repo/releases/tags/$tag" > "$tmp/release.json"
+# Drafts are not available through releases/tags; keep the authenticated release ID.
+bash scripts/github-release.sh "$repo" "$tag" "$commit" "$channel" > "$tmp/release.json"
+release_id=$(jq -er '.id' "$tmp/release.json")
+[[ $release_id =~ ^[0-9]+$ ]]
 jq -e --argjson preview "$([[ $channel == preview ]] && printf true || printf false)" \
   '.prerelease == $preview' "$tmp/release.json" >/dev/null
 for asset in "${assets[@]}"; do
@@ -93,14 +86,17 @@ for asset in "${assets[@]}"; do
     gh api -H 'Accept: application/octet-stream' "repos/$repo/releases/assets/$existing_id" > "$tmp/asset"
     cmp "$asset" "$tmp/asset"
   else
-    gh release upload "$tag" "$asset" --repo "$repo"
+    gh api --method POST "https://uploads.github.com/repos/$repo/releases/$release_id/assets?name=$name" \
+      -H 'Content-Type: application/octet-stream' --input "$asset" >/dev/null
   fi
   type=application/octet-stream
   [[ $name != *.json ]] || type=application/json
   immutable_put "updater/$channel/$name" "$asset" "$type"
 done
-if [[ $(jq -r .draft "$tmp/release.json") == true ]]; then gh release edit "$tag" --repo "$repo" --draft=false; fi
-gh api "repos/$repo/releases/tags/$tag" > "$tmp/release.json"
+if [[ $(jq -r .draft "$tmp/release.json") == true ]]; then
+  gh api --method PATCH "repos/$repo/releases/$release_id" -F draft=false >/dev/null
+fi
+gh api "repos/$repo/releases/$release_id" > "$tmp/release.json"
 jq -e '.draft == false' "$tmp/release.json" >/dev/null
 # Verify anonymous bytes from both public endpoints before advertising either source.
 for arch in amd64 arm64; do
