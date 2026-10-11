@@ -18,6 +18,7 @@ ZrLog 主工程保留应用镜像与整站 Compose 集成；base 保留升级检
 ```bash
 ./mvnw -B test package
 bash scripts/test-package.sh
+bash scripts/test-github-release.sh
 ./mvnw -B -Pnative -DskipTests package
 bash scripts/smoke-native.sh target/zrlog-updater
 ZRLOG_UPDATER_REAL_DOCKER=1 ./mvnw -B test

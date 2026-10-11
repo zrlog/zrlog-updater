@@ -106,8 +106,12 @@ for arch in amd64 arm64; do
   github=$(jq -er --arg name "$name" '.assets[] | select(.name == $name and .state == "uploaded") | .browser_download_url' "$tmp/release.json")
   [[ $github == "https://github.com/$repo/releases/download/$tag/$name" ]]
   for url in "$dl" "$github"; do
-    curl --fail --silent --show-error --location --retry 4 --retry-all-errors \
-      --proto '=https' --proto-redir '=https' --max-time 300 "$url" -o "$tmp/download"
+    printf 'Verify anonymous package download: %s\n' "$url"
+    if ! curl --fail --silent --show-error --location --retry 5 --retry-all-errors \
+      --proto '=https' --proto-redir '=https' --max-time 300 -D "$tmp/download.headers" "$url" -o "$tmp/download"; then
+      grep -Ei '^HTTP/|^server:|^cf-mitigated:' "$tmp/download.headers" >&2 || true
+      exit 1
+    fi
     cmp "$dir/$name" "$tmp/download"
   done
   jq --arg dl "$dl" --arg github "$github" \

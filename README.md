@@ -20,21 +20,20 @@
 将完整引用填入 `.env` 的 `ZRLOG_UPDATER_IMAGE`。此流程不推进应用更新清单或正式版本；
 使用后台升级功能还需要包含对应 base/admin 集成的应用版本和已发布的应用镜像清单。
 
-2026-10-11 发布的预览标签为 `1.0.0-preview.8739d2a868ba.38142228210.1`。
+独立仓库已发布预览标签 `1.0.0-preview.1ef3c8e7cd37.38146772016.1`。
 Docker Hub 和阿里云均已公开，支持 `linux/amd64`、`linux/arm64`。
-[构建及发布记录](https://github.com/94fzb/zrlog/actions/runs/38142228210)包含两个架构各
-22 项测试、Native 冒烟与镜像身份验证。阿里云公开设置完成后，
-[双架构匿名拉取及运行复验](https://github.com/94fzb/zrlog/actions/runs/38143384408)已全部通过。
+[镜像构建及发布记录](https://github.com/zrlog/zrlog-updater/actions/runs/38146772016)包含两个架构各
+22 项测试、Native 冒烟、镜像身份及公开拉取验证，镜像任务全部通过。
 中国地区可配置：
 
 ```dotenv
-ZRLOG_UPDATER_IMAGE=registry.cn-chengdu.aliyuncs.com/hibegin/zrlog-updater:1.0.0-preview.8739d2a868ba.38142228210.1
+ZRLOG_UPDATER_IMAGE=registry.cn-chengdu.aliyuncs.com/hibegin/zrlog-updater:1.0.0-preview.1ef3c8e7cd37.38146772016.1
 ```
 
 可在同一入口设置 `push_image=false`、`publish_packages=false`、
 `verify_version=<已发布标签>`，并将 `ref` 指向该镜像在本仓库的完整源码 SHA，执行双架构
 匿名拉取、版本/源码身份和 Native HTTP 复验。此模式不会重新构建或改写镜像。
-上面的历史镜像来自主工程，仍通过其原始工作流复验；新镜像的源码身份属于本仓库。
+拆仓前的历史标签继续保留，其源码身份属于当时的主工程；新标签使用本仓库的提交。
 
 ## 构建
 
@@ -89,6 +88,10 @@ ZRLOG_UPDATER_IMAGE=zrlog-updater:local
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.updater.yml up -d
 ```
+
+主工程新的默认 Compose 已直接包含 updater，使用那份配置时只需 `docker compose up -d`，
+并设置 `ZRLOG_COMPOSE_FILES=docker-compose.yml`，不再叠加此文件。默认应用 3.9.2 尚不包含
+后台 Docker 升级集成，后台功能需使用包含对应 base/admin 集成的应用镜像。
 
 目录必须按宿主机绝对路径挂入 updater 的相同路径，Compose 才能正确解释已有相对
 挂载。自定义多个 Compose 文件时，通过 `ZRLOG_COMPOSE_FILES` 填写按相同顺序排列的
@@ -149,6 +152,12 @@ ZIP 只包含可执行文件、本文和 Compose 附加配置。
 Sigstore 签名发布到本仓库 GitHub Release 和 `https://dl.zrlog.com/updater/{channel}/`。
 只有匿名下载并验证两处字节一致后，才写入 `zipSources` 并条件更新 updater 安装包清单。
 构建阶段的 `zipSources` 为空，不能当作已经发布。
+`last*.version.json` 更新清单只发布到 dl，不上传到 GitHub Release；GitHub 仅分发安装包
+与校验附件。CI artifact 中的清单用于任务间传递构建身份及排查，运行时不会读取它。
+
+若上传后公开下载暂时失败，可运行 `Recover preview package publication`，传入原构建
+`run_id` 和信任 artifact 的 `artifact_attempt`。它复用原 ZIP、签名和 SBOM，核对构建
+身份后继续分发，避免重新签名导致不可变附件冲突。源提交须匹配原工作流提交。
 
 组织或仓库 Actions Secrets 需授权本仓库使用：`DOCKER_PASSWORD`、`ALIYUN_DOCKER_PASSWORD`、
 `SECRET_ID`、`SECRET_KEY`、`BUCKET`、`HOST`。`HOST` 为 HTTPS S3 兼容端点。

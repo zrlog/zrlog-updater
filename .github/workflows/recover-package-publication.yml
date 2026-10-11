@@ -1,0 +1,71 @@
+name: Recover preview package publication
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Build and publish updater run containing the original signed preview packages
+        required: true
+        type: string
+      artifact_attempt:
+        description: Attempt used in updater-package-publication artifact name
+        default: '1'
+        type: string
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: updater-packages-preview
+  cancel-in-progress: false
+jobs:
+  recover:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: sigstore/cosign-installer@v3
+      - name: Verify source run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE_RUN: ${{ inputs.run_id }}
+          ARTIFACT_ATTEMPT: ${{ inputs.artifact_attempt }}
+        run: |
+          [[ $SOURCE_RUN =~ ^[0-9]+$ && $ARTIFACT_ATTEMPT =~ ^[1-9][0-9]*$ ]]
+          gh api "repos/zrlog/zrlog-updater/actions/runs/$SOURCE_RUN" > /tmp/source-run.json
+          jq -e '.path == ".github/workflows/build-publish.yml" and .event == "workflow_dispatch" and .status == "completed"' /tmp/source-run.json
+      - uses: actions/download-artifact@v8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: zrlog/zrlog-updater
+          run-id: ${{ inputs.run_id }}
+          name: updater-package-publication-${{ inputs.artifact_attempt }}
+          path: dist
+      - name: Validate original build identity
+        env:
+          SOURCE_RUN: ${{ inputs.run_id }}
+        run: |
+          version=$(jq -er '.version' dist/last.updater.Linux-amd64.version.json)
+          commit=$(jq -er '.head_sha' /tmp/source-run.json)
+          [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+-preview\.[a-f0-9]{12}\.[0-9]+\.[0-9]+$ ]]
+          [[ $commit =~ ^[a-f0-9]{40}$ ]]
+          for arch in amd64 arm64; do
+            metadata="dist/last.updater.Linux-$arch.version.json"
+            bash scripts/validate-package.sh "$metadata" "$version" "$commit" preview
+            jq -e --arg url "https://github.com/zrlog/zrlog-updater/actions/runs/$SOURCE_RUN" '.buildWorkflow == $url' "$metadata"
+          done
+          printf 'VERSION=%s\nSOURCE_COMMIT=%s\n' "$version" "$commit" >> "$GITHUB_ENV"
+      - name: Resume immutable publication and anonymous download verification
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.SECRET_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.SECRET_KEY }}
+          ZRLOG_S3_BUCKET: ${{ secrets.BUCKET }}
+          ZRLOG_S3_ENDPOINT: ${{ secrets.HOST }}
+        run: bash scripts/publish-packages.sh dist "$VERSION" "$SOURCE_COMMIT" preview
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: updater-package-recovery-${{ github.run_attempt }}
+          path: dist/*
+          if-no-files-found: warn
