@@ -6,8 +6,8 @@
 
 ## 独立预览镜像
 
-维护者可通过 `build preview docker image` 工作流指定源码 `ref`，设置
-`updater_only=true`、`push_image=true`，独立构建并发布 updater，无需先构建整站应用包。
+维护者可通过本仓库 `Build and publish updater` 工作流指定源码 `ref`，设置
+`push_image=true`，独立构建并发布 updater。push/PR 默认只构建验证。
 工作流在 AMD64、ARM64 原生 Runner 上执行真实 Docker 测试、Native HTTP/重启冒烟、
 容器检查，再推送 Docker Hub 与阿里云，验证两边的 digest、签名及匿名拉取。
 
@@ -31,9 +31,10 @@ Docker Hub 和阿里云均已公开，支持 `linux/amd64`、`linux/arm64`。
 ZRLOG_UPDATER_IMAGE=registry.cn-chengdu.aliyuncs.com/hibegin/zrlog-updater:1.0.0-preview.8739d2a868ba.38142228210.1
 ```
 
-仓库访问设置修复后，可在同一入口设置 `updater_only=true`、`push_image=false`、
-`updater_verify_version=<已发布标签>`，并将 `ref` 指向该镜像的完整源码 SHA，执行双架构
+可在同一入口设置 `push_image=false`、`publish_packages=false`、
+`verify_version=<已发布标签>`，并将 `ref` 指向该镜像在本仓库的完整源码 SHA，执行双架构
 匿名拉取、版本/源码身份和 Native HTTP 复验。此模式不会重新构建或改写镜像。
+上面的历史镜像来自主工程，仍通过其原始工作流复验；新镜像的源码身份属于本仓库。
 
 ## 构建
 
@@ -41,13 +42,13 @@ ZRLOG_UPDATER_IMAGE=registry.cn-chengdu.aliyuncs.com/hibegin/zrlog-updater:1.0.0
 构建需要 JDK 21，Native 构建需要对应 GraalVM 和本机 C 工具链。
 
 ```bash
-./mvnw -f docker/updater/pom.xml test package
-./mvnw -f docker/updater/pom.xml -Pnative package
-python3 docker/updater/smoke-native.py docker/updater/target/zrlog-updater
-docker build -t zrlog-updater:local docker/updater
+./mvnw -B test package
+./mvnw -B -Pnative package
+bash scripts/smoke-native.sh target/zrlog-updater
+docker build -t zrlog-updater:local .
 ```
 
-主工程根目录的 Maven Wrapper 可直接构建此模块。JVM 包仅用于开发、调试和无 GraalVM
+仓库自带 Maven Wrapper。JVM 包仅用于开发、调试和无 GraalVM
 环境验证。容器运行 Native 可执行文件，以及实际控制 Compose 所需的 Docker/Compose
 客户端；不包含后台、安装器、博客页面、主题或数据库模块。
 
@@ -55,7 +56,7 @@ docker build -t zrlog-updater:local docker/updater
 `updateVersionJsonFilename`。构建时可显式指定：
 
 ```bash
-./mvnw -f docker/updater/pom.xml -Pnative package \
+./mvnw -Pnative package \
   -DmirrorWebSite=https://dl.zrlog.com/ \
   -DupdateVersionJsonFilename=last.docker-image.version.json
 ```
@@ -71,7 +72,7 @@ docker build -t zrlog-updater:local docker/updater
 
 ## Compose 配置
 
-使用 `docker/docker-compose.updater.yml` 作为原 Compose 文件的附加配置。将它和
+使用本仓库的 `docker-compose.updater.yml` 作为原 Compose 文件的附加配置。将它和
 原 Compose 文件、原 `.env` 放在同一部署目录。在原 `.env` 中补充：
 
 ```dotenv
@@ -136,18 +137,44 @@ Compose `up --no-deps --no-build --pull never --wait zrlog`，MySQL 不参与重
 
 ## 包与验证
 
-Native 应用构建生成 `build.properties` 后，`bash docker/updater/build-package.sh <输出目录>`
-按同一版本构建 updater、运行 Native 冒烟并生成独立 ZIP 与
-`last.updater.Linux-{amd64,arm64}.version.json`。ZIP 只包含可执行文件、本文和 Compose 附加配置。
-正式 Release Order 可显式批准两个 Linux updater ZIP，随后沿用应用包的 SHA-256、
-SBOM、provenance、签名与 GitHub/dl 分发流程。
+updater 使用自己的 POM 版本和源码提交，不与博客应用版本绑定。构建脚本使用 Bash，
+依赖 `jq`、`curl`、`zip`、`unzip`、`sha256sum` 等命令。发布另需 `gh`、AWS CLI v2
+（支持 S3 条件写入）、Syft 和 Cosign。
+
+`bash scripts/build-package.sh dist <updater版本> preview` 构建 Native、运行 HTTP 与重启
+冒烟并生成独立 ZIP 和 `last.updater.Linux-{amd64,arm64}.version.json`。
+ZIP 只包含可执行文件、本文和 Compose 附加配置。
+
+工作流的 `publish_packages=true` 将两个架构的同一批 ZIP 及 SHA-256、SBOM、provenance、
+Sigstore 签名发布到本仓库 GitHub Release 和 `https://dl.zrlog.com/updater/{channel}/`。
+只有匿名下载并验证两处字节一致后，才写入 `zipSources` 并条件更新 updater 安装包清单。
+构建阶段的 `zipSources` 为空，不能当作已经发布。
+
+组织或仓库 Actions Secrets 需授权本仓库使用：`DOCKER_PASSWORD`、`ALIYUN_DOCKER_PASSWORD`、
+`SECRET_ID`、`SECRET_KEY`、`BUCKET`、`HOST`。`HOST` 为 HTTPS S3 兼容端点。
+工作流先检查所选分发渠道所需的密钥是否可读，再启动构建。
+
+预览发布使用唯一 `v<preview版本>` tag 和 GitHub prerelease；正式 `channel=release`
+只接受已经存在且匹配 POM 基础版本的 `vX.Y.Z` tag。本仓库维护者单独批准正式发版，
+应用 Release Order 不再打包或发布 updater。此任务只发布预览，不创建正式 tag。
+
+该安装包目录与 updater 读取的**应用升级清单**不同：运行时依然从 `build.properties`
+配置的 `mirrorWebSite` 读取 `{release,preview}/last.docker-image.version.json`。
+应用镜像仓库选择继续由后台设置管理。
 
 ```bash
-python3 docker/test_image_manifest.py
-python3 shell/release/test_update_sources.py
+bash scripts/test-package.sh
+shellcheck scripts/*.sh
 # 仅在专用测试 Docker Engine 执行；测试创建并清理隔离项目、镜像和注册表。
-ZRLOG_UPDATER_REAL_DOCKER=1 ./mvnw -f docker/updater/pom.xml test
+ZRLOG_UPDATER_REAL_DOCKER=1 ./mvnw test
 ```
 
-`.github/workflows/docker-updater-checks.yml` 同时验证 JVM、Native 和真实 Docker 执行边界。
+`.github/workflows/build-publish.yml` 在两个原生架构上验证 JVM、Native、ZIP 和真实 Docker 执行边界。
 其中 Docker 测试使用最小镜像夹具；完整站点仍需完成安装、数据库和附件保留的升级验收。
+
+## 仓库边界
+
+本仓库维护独立 Docker 升级服务端和它自己的构建、安装包、镜像。
+主工程维护博客应用的 Docker 镜像、应用清单和 Compose 集成；base 保留 HTTP 客户端、
+版本检查，以及原有 ZIP/Native/WAR 升级路径；admin 提供设置和进度页面。
+updater 不引入页面、数据库、安装器或主题模块。

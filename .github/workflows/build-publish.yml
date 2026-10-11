@@ -1,0 +1,378 @@
+name: Build and publish updater
+run-name: Updater ${{ inputs.channel || 'preview' }} (${{ inputs.ref || github.sha }})
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Full updater source SHA, branch, or existing release tag
+        default: main
+        type: string
+      channel:
+        description: Release requires an existing vX.Y.Z tag matching the updater POM version
+        default: preview
+        type: choice
+        options: [preview, release]
+      push_image:
+        description: Publish verified images to Docker Hub and Aliyun
+        default: false
+        type: boolean
+      publish_packages:
+        description: Publish verified Native ZIPs to GitHub and dl.zrlog.com
+        default: false
+        type: boolean
+      verify_version:
+        description: Only verify an existing image version; both publish options must be false
+        default: ''
+        type: string
+
+concurrency:
+  group: updater-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  DOCKERHUB_IMAGE: zrlog/zrlog-updater
+  ALIYUN_IMAGE: registry.cn-chengdu.aliyuncs.com/hibegin/zrlog-updater
+
+jobs:
+  prepare:
+    if: inputs.verify_version == ''
+    runs-on: ubuntu-22.04
+    outputs:
+      commit: ${{ steps.identity.outputs.commit }}
+      version: ${{ steps.identity.outputs.version }}
+      attempt: ${{ steps.identity.outputs.attempt }}
+      channel: ${{ steps.identity.outputs.channel }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+      - name: Fix preview identity
+        id: identity
+        env:
+          CHANNEL: ${{ inputs.channel || 'preview' }}
+          SOURCE_REF: ${{ inputs.ref || github.sha }}
+        run: bash scripts/prepare-identity.sh
+      - name: Check selected publication credentials
+        env:
+          PUSH_IMAGE: ${{ inputs.push_image }}
+          PUBLISH_PACKAGES: ${{ inputs.publish_packages }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+          ALIYUN_DOCKER_PASSWORD: ${{ secrets.ALIYUN_DOCKER_PASSWORD }}
+          SECRET_ID: ${{ secrets.SECRET_ID }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+          BUCKET: ${{ secrets.BUCKET }}
+          HOST: ${{ secrets.HOST }}
+        run: |
+          if [[ $PUSH_IMAGE == true ]]; then
+            : "${DOCKER_PASSWORD:?Docker Hub secret unavailable}" "${ALIYUN_DOCKER_PASSWORD:?Aliyun secret unavailable}"
+          fi
+          if [[ $PUBLISH_PACKAGES == true ]]; then
+            : "${SECRET_ID:?Storage secret unavailable}" "${SECRET_KEY:?Storage secret unavailable}"
+            : "${BUCKET:?Bucket unavailable}" "${HOST:?Storage endpoint unavailable}"
+          fi
+
+  build:
+    name: Updater (${{ matrix.arch }})
+    needs: prepare
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-22.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      SOURCE_COMMIT: ${{ needs.prepare.outputs.commit }}
+      ARCH: ${{ matrix.arch }}
+      CHANNEL: ${{ needs.prepare.outputs.channel }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+          persist-credentials: false
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: '21'
+          distribution: graalvm
+          cache: maven
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@v4
+      - name: Test with real Docker and compile Native updater
+        env:
+          ZRLOG_UPDATER_REAL_DOCKER: '1'
+        run: |
+          ./mvnw -B -f pom.xml -Pnative "-Drevision=${VERSION}" package
+          bash scripts/smoke-native.sh target/zrlog-updater
+          [[ $(target/zrlog-updater --version) == "zrlog-updater ${VERSION}" ]]
+      - name: Package independent Native ZIP
+        run: |
+          shellcheck scripts/*.sh
+          bash scripts/test-package.sh
+          bash scripts/package-native.sh target/zrlog-updater dist "${VERSION}" "${CHANNEL}"
+          archive=$(bash scripts/validate-package.sh "dist/last.updater.Linux-${ARCH}.version.json" "${VERSION}" "${SOURCE_COMMIT}" "${CHANNEL}")
+          unzip -q "$archive" -d /tmp/updater-package-roundtrip
+          bash scripts/smoke-native.sh /tmp/updater-package-roundtrip/zrlog-updater
+      - uses: actions/upload-artifact@v7
+        with:
+          name: updater-package-${{ matrix.arch }}-${{ needs.prepare.outputs.attempt }}
+          path: dist/*
+          if-no-files-found: error
+      - name: Verify local container and bundled clients
+        run: |
+          docker build --tag zrlog-updater:verified \
+            --build-arg "ZRLOG_UPDATER_VERSION=${VERSION}" \
+            --build-arg "ZRLOG_UPDATER_COMMIT=${SOURCE_COMMIT}" .
+          [[ $(docker run --rm zrlog-updater:verified --version) == "zrlog-updater ${VERSION}" ]]
+          docker run --rm --entrypoint docker zrlog-updater:verified --version
+          docker run --rm --entrypoint docker zrlog-updater:verified compose version
+      - uses: docker/login-action@v4.6.0
+        if: inputs.push_image
+        with:
+          username: zrlog
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      - uses: docker/login-action@v4.6.0
+        if: inputs.push_image
+        with:
+          registry: registry.cn-chengdu.aliyuncs.com
+          username: 90xchun
+          password: ${{ secrets.ALIYUN_DOCKER_PASSWORD }}
+      - name: Push Docker Hub image by digest
+        id: dockerhub
+        if: inputs.push_image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/${{ matrix.arch }}
+          provenance: mode=max
+          sbom: true
+          outputs: type=image,name=${{ env.DOCKERHUB_IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          build-args: |
+            ZRLOG_UPDATER_VERSION=${{ env.VERSION }}
+            ZRLOG_UPDATER_COMMIT=${{ env.SOURCE_COMMIT }}
+      - name: Push Aliyun image by digest
+        id: aliyun
+        if: inputs.push_image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/${{ matrix.arch }}
+          provenance: false
+          sbom: false
+          outputs: type=image,name=${{ env.ALIYUN_IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          build-args: |
+            ZRLOG_UPDATER_VERSION=${{ env.VERSION }}
+            ZRLOG_UPDATER_COMMIT=${{ env.SOURCE_COMMIT }}
+      - name: Pull and verify both published images
+        if: inputs.push_image
+        env:
+          DOCKERHUB_DIGEST: ${{ steps.dockerhub.outputs.digest }}
+          ALIYUN_DIGEST: ${{ steps.aliyun.outputs.digest }}
+        run: |
+          set -euo pipefail
+          for ref in "${DOCKERHUB_IMAGE}@${DOCKERHUB_DIGEST}" "${ALIYUN_IMAGE}@${ALIYUN_DIGEST}"; do
+            docker pull --platform "linux/${ARCH}" "${ref}"
+            [[ $(docker run --rm "${ref}" --version) == "zrlog-updater ${VERSION}" ]]
+            docker image inspect "${ref}" | jq -e --arg version "${VERSION}" --arg commit "${SOURCE_COMMIT}" \
+              '.[0].Config.Labels | .["org.opencontainers.image.version"] == $version and .["org.opencontainers.image.revision"] == $commit'
+            container=$(docker create "${ref}" --version)
+            docker cp "${container}:/usr/local/bin/zrlog-updater" /tmp/published-updater
+            docker rm "${container}"
+            bash scripts/smoke-native.sh /tmp/published-updater
+          done
+          mkdir -p /tmp/updater-digests
+          jq -n --arg dockerhub "${DOCKERHUB_DIGEST}" --arg aliyun "${ALIYUN_DIGEST}" \
+            '{dockerhub: $dockerhub, aliyun: $aliyun}' > "/tmp/updater-digests/${ARCH}.json"
+      - uses: actions/upload-artifact@v7
+        if: inputs.push_image
+        with:
+          name: updater-preview-digest-${{ matrix.arch }}-${{ needs.prepare.outputs.attempt }}
+          path: /tmp/updater-digests/*.json
+          if-no-files-found: error
+
+  publish:
+    name: Publish and verify public updater images
+    needs: [prepare, build]
+    if: inputs.push_image
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      SOURCE_COMMIT: ${{ needs.prepare.outputs.commit }}
+    steps:
+      - uses: docker/setup-buildx-action@v4
+      - uses: sigstore/cosign-installer@v3
+      - uses: actions/download-artifact@v8
+        with:
+          path: /tmp/updater-digests
+          pattern: updater-preview-digest-*-${{ needs.prepare.outputs.attempt }}
+          merge-multiple: true
+      - uses: docker/login-action@v4.6.0
+        with:
+          username: zrlog
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      - uses: docker/login-action@v4.6.0
+        with:
+          registry: registry.cn-chengdu.aliyuncs.com
+          username: 90xchun
+          password: ${{ secrets.ALIYUN_DOCKER_PASSWORD }}
+      - name: Publish immutable tags and signatures
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/updater-publication
+          for registry in dockerhub aliyun; do
+            repository="${DOCKERHUB_IMAGE}"
+            if [[ "${registry}" == aliyun ]]; then repository="${ALIYUN_IMAGE}"; fi
+            sources=()
+            for arch in amd64 arm64; do
+              digest=$(jq -er --arg registry "${registry}" '.[$registry]' "/tmp/updater-digests/${arch}.json")
+              [[ "${digest}" =~ ^sha256:[a-f0-9]{64}$ ]]
+              sources+=("${repository}@${digest}")
+            done
+            docker buildx imagetools create --dry-run "${sources[@]}" > /tmp/updater-index.json
+            if docker buildx imagetools inspect "${repository}:${VERSION}" --raw > /tmp/updater-existing.json 2>/tmp/updater-inspect.error; then
+              diff <(jq -S . /tmp/updater-existing.json) <(jq -S . /tmp/updater-index.json)
+            else
+              grep -Eqi 'not found|manifest unknown' /tmp/updater-inspect.error || { cat /tmp/updater-inspect.error >&2; exit 1; }
+              docker buildx imagetools create --tag "${repository}:${VERSION}" "${sources[@]}"
+            fi
+            docker buildx imagetools inspect "${repository}:${VERSION}" --raw | jq -e \
+              '([.manifests[] | select(.platform.os == "linux") | .platform.architecture] | sort) == ["amd64", "arm64"]'
+            digest=$(docker buildx imagetools inspect "${repository}:${VERSION}" --format '{{.Manifest.Digest}}')
+            cosign sign --yes "${repository}@${digest}"
+            jq -n --arg image "${repository}:${VERSION}" --arg digest "${digest}" \
+              --arg commit "${SOURCE_COMMIT}" --arg version "${VERSION}" \
+              '{image: $image, digest: $digest, commit: $commit, version: $version, platforms: ["linux/amd64", "linux/arm64"]}' \
+              > "/tmp/updater-publication/${registry}.json"
+          done
+      - name: Verify anonymous access and pull
+        run: |
+          set -euo pipefail
+          docker logout
+          docker logout registry.cn-chengdu.aliyuncs.com
+          for repository in "${DOCKERHUB_IMAGE}" "${ALIYUN_IMAGE}"; do
+            docker buildx imagetools inspect "${repository}:${VERSION}"
+            docker pull --platform linux/amd64 "${repository}:${VERSION}"
+            [[ $(docker run --rm "${repository}:${VERSION}" --version) == "zrlog-updater ${VERSION}" ]]
+            printf '\n- %s:%s\n' "${repository}" "${VERSION}" >> "${GITHUB_STEP_SUMMARY}"
+          done
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: updater-preview-publication-${{ github.run_attempt }}
+          path: /tmp/updater-publication/*.json
+          if-no-files-found: warn
+
+  verify-existing:
+    name: Verify existing public updater (${{ matrix.arch }})
+    if: inputs.verify_version != ''
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-22.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    env:
+      VERSION: ${{ inputs.verify_version }}
+      PUSH_IMAGE: ${{ inputs.push_image }}
+      PUBLISH_PACKAGES: ${{ inputs.publish_packages }}
+      ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@v4
+      - name: Verify anonymous pulls, identity and Native HTTP on both registries
+        run: |
+          set -euo pipefail
+          [[ "${PUSH_IMAGE}" == false && "${PUBLISH_PACKAGES}" == false ]]
+          [[ "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-preview\.[a-f0-9]{12}\.[0-9]+\.[0-9]+)?$ ]]
+          commit=$(git rev-parse HEAD)
+          mkdir -p /tmp/updater-verification
+          for registry in dockerhub aliyun; do
+            repository="${DOCKERHUB_IMAGE}"
+            if [[ "${registry}" == aliyun ]]; then repository="${ALIYUN_IMAGE}"; fi
+            reference="${repository}:${VERSION}"
+            docker buildx imagetools inspect "${reference}" --raw | jq -e \
+              '([.manifests[] | select(.platform.os == "linux") | .platform.architecture] | sort) == ["amd64", "arm64"]'
+            digest=$(docker buildx imagetools inspect "${reference}" --format '{{.Manifest.Digest}}')
+            docker pull --platform "linux/${ARCH}" "${repository}@${digest}"
+            [[ $(docker run --rm "${repository}@${digest}" --version) == "zrlog-updater ${VERSION}" ]]
+            docker image inspect "${repository}@${digest}" | jq -e --arg version "${VERSION}" --arg commit "${commit}" \
+              '.[0].Config.Labels | .["org.opencontainers.image.version"] == $version and .["org.opencontainers.image.revision"] == $commit'
+            container=$(docker create "${repository}@${digest}" --version)
+            docker cp "${container}:/usr/local/bin/zrlog-updater" /tmp/published-updater
+            docker rm "${container}"
+            bash scripts/smoke-native.sh /tmp/published-updater
+            jq -n --arg image "${reference}" --arg digest "${digest}" --arg platform "linux/${ARCH}" \
+              --arg commit "${commit}" '{image: $image, digest: $digest, platform: $platform, commit: $commit, anonymousPull: true, nativeSmoke: true}' \
+              > "/tmp/updater-verification/${registry}.json"
+          done
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: updater-public-verification-${{ matrix.arch }}-${{ github.run_attempt }}
+          path: /tmp/updater-verification/*.json
+          if-no-files-found: warn
+
+  publish-packages:
+    name: Publish verified Native packages
+    needs: [prepare, build]
+    if: inputs.publish_packages
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    concurrency:
+      group: updater-packages-${{ needs.prepare.outputs.channel }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      id-token: write
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      SOURCE_COMMIT: ${{ needs.prepare.outputs.commit }}
+      CHANNEL: ${{ needs.prepare.outputs.channel }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          pattern: updater-package-*-${{ needs.prepare.outputs.attempt }}
+          merge-multiple: true
+      - uses: sigstore/cosign-installer@v3
+      - uses: anchore/sbom-action/download-syft@v0
+      - name: Generate SHA-256, SBOM, signatures and provenance
+        run: bash scripts/generate-trust-metadata.sh dist "$VERSION" "$SOURCE_COMMIT" "$CHANNEL"
+      - name: Publish immutable assets and verified download metadata
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.SECRET_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.SECRET_KEY }}
+          ZRLOG_S3_BUCKET: ${{ secrets.BUCKET }}
+          ZRLOG_S3_ENDPOINT: ${{ secrets.HOST }}
+        run: bash scripts/publish-packages.sh dist "$VERSION" "$SOURCE_COMMIT" "$CHANNEL"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: updater-package-publication-${{ needs.prepare.outputs.attempt }}
+          path: dist/*
+          if-no-files-found: error

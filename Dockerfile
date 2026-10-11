@@ -1,4 +1,4 @@
-# Build the native executable first (mvn -Pnative package), then use docker/updater as the context.
+# Build the native executable first (mvn -Pnative package), then use this repository root as the build context.
 # These bases can be supplied from an accessible registry during image construction.
 ARG DOCKER_CLI_IMAGE=docker:28-cli
 ARG UPDATER_BASE_IMAGE=ubuntu:noble
@@ -8,7 +8,7 @@ ARG ZRLOG_UPDATER_VERSION
 ARG ZRLOG_UPDATER_COMMIT
 LABEL org.opencontainers.image.version="${ZRLOG_UPDATER_VERSION}" \
       org.opencontainers.image.revision="${ZRLOG_UPDATER_COMMIT}" \
-      org.opencontainers.image.source="https://github.com/94fzb/zrlog"
+      org.opencontainers.image.source="https://github.com/zrlog/zrlog-updater"
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=docker-client /usr/local/bin/docker /usr/local/bin/docker
