@@ -115,6 +115,7 @@ jobs:
           ZRLOG_UPDATER_REAL_DOCKER: '1'
         run: |
           ./mvnw -B -f pom.xml -Pnative "-Drevision=${VERSION}" package
+          bash scripts/test-application-modules.sh "${VERSION}" --native
           bash scripts/smoke-native.sh target/zrlog-updater
           [[ $(target/zrlog-updater --version) == "zrlog-updater ${VERSION}" ]]
       - name: Package independent Native ZIP

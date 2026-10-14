@@ -1,0 +1,64 @@
+name: Application updater modules
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      publish_snapshots:
+        description: Publish tested SPI/core snapshots to the Central snapshot repository
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: updater-application-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '11'
+          cache: maven
+      - name: Verify application modules without the Docker service
+        run: ./mvnw -B -ntp -pl updater-spi,updater-core -am clean verify
+      - name: Resolve published POMs and SPI from an empty consumer cache
+        run: bash scripts/test-maven-consumer.sh
+
+  publish:
+    needs: verify
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_snapshots
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '11'
+          cache: maven
+          server-id: central
+          server-username: OSSRH_USERNAME
+          server-password: OSSRH_PASSWORD
+      - name: Publish SPI/core snapshots
+        env:
+          OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+          OSSRH_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
+        run: |
+          : "${OSSRH_USERNAME:?Central username unavailable}" "${OSSRH_PASSWORD:?Central password unavailable}"
+          version=$(sed -n 's/.*<revision>\([^<]*\)<\/revision>.*/\1/p' pom.xml)
+          [[ $version == *-SNAPSHOT ]]
+          ./mvnw -B -ntp -pl updater-spi,updater-core -am -Psnapshot clean deploy
