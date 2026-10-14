@@ -20,6 +20,17 @@ base 通过 SPI 接入实现，主工程按发行方式选入实现构件，admi
 `updater-dev` profile 装配。缺失实现不会影响 SPI 加载，实际请求升级清单时会明确报错。
 迁移 DTO 保留原包名、字段和 SSE 事件名，HTTP 请求继续由应用的已有工具提供。
 
+`com.zrlog.updater.common.UpdaterUtils` 统一部署类型优先级、启动 JAR 识别和创建流程。
+宿主传入实际运行环境、classpath、应用目录和 SPI 创建回调；common 不读取应用全局配置，
+不依赖 base、Web 或各部署实现。主工程的 `ApplicationUpdaterFactory` 只读取宿主环境并
+连接已有 `UpdaterHosts` 适配器。ZIP 启动目标必须有实际 ZrLog Main-Class，重复 classpath
+可去重，多个候选时返回不可用，不把依赖 JAR 当作重启目标。
+
+升级选择、创建、启动文件识别等测试随实现由本仓库维护。需要实际宿主时，
+`tests/application-host/src/test/java` 维护 Web 工厂、WAR/ZIP 装配和 deb CLI 的验收，
+通过 `bash scripts/test-application-host.sh '<应用 test classpath>'` 编译并运行。
+主工程提供编译产物和 classpath，专项测试源码留在 updater；默认模块自测可独立运行。
+
 各 Provider 在自己的 `zrlog-updater-<类型>/src/main/resources/i18n/updater/<类型>/backend_*.properties` 维护文案；
 检查、下载、重启等共用消息在 common。ZIP、native_image、WAR、FaaS、Docker、deb 的
 语言文件分开，Provider 通过 `messageBundles()` 声明资源，由宿主按语言合并。

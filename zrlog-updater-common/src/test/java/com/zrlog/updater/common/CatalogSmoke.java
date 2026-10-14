@@ -8,7 +8,7 @@ import com.zrlog.updater.spi.UpdateCatalogs;
 
 /** Entry point for assembled JAR and Native Image verification, never shipped as production code. */
 public final class CatalogSmoke {
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
         UpdateCatalog catalog = UpdateCatalogs.getInstance();
         com.zrlog.updater.spi.UpdateContext.Builder context = new com.zrlog.updater.spi.UpdateContext.Builder();
         context.executable = new java.io.File("zrlog");
@@ -18,9 +18,29 @@ public final class CatalogSmoke {
             public int download(java.net.URI uri, java.io.File file) { throw new AssertionError("No download in Native smoke"); }
             public java.net.http.HttpResponse<String> send(java.net.http.HttpRequest request) { throw new AssertionError("No request in Native smoke"); }
         };
-        for (com.zrlog.common.UpdaterTypeEnum type : com.zrlog.common.UpdaterTypeEnum.values()) {
-            if (com.zrlog.updater.spi.UpdateProviders.get(type).type() != type) throw new AssertionError("Missing " + type);
-            if (com.zrlog.updater.spi.UpdateProviders.get(type).create(context.build()).getType() != type) throw new AssertionError("Cannot construct " + type);
+        java.nio.file.Path home = java.nio.file.Files.createTempDirectory("updater-factory-smoke");
+        java.io.File launcher = home.resolve("zrlog-starter.jar").toFile();
+        try {
+            java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+            manifest.getMainAttributes().put(java.util.jar.Attributes.Name.MANIFEST_VERSION, "1.0");
+            manifest.getMainAttributes().put(java.util.jar.Attributes.Name.MAIN_CLASS, "com.zrlog.web.Application");
+            try (java.util.jar.JarOutputStream ignored = new java.util.jar.JarOutputStream(
+                    new java.io.FileOutputStream(launcher), manifest)) { }
+            for (com.zrlog.common.UpdaterTypeEnum type : com.zrlog.common.UpdaterTypeEnum.values()) {
+                com.zrlog.updater.spi.ApplicationUpdater updater = UpdaterUtils.getUpdater(type, context.executable,
+                        launcher.toString(), home.toFile(), (selected, executable) -> {
+                            com.zrlog.updater.spi.UpdateContext.Builder adapted = new com.zrlog.updater.spi.UpdateContext.Builder(context.build());
+                            adapted.executable = executable;
+                            return com.zrlog.updater.spi.UpdateProviders.get(selected).create(adapted.build());
+                        });
+                if (updater == null || updater.getType() != type) throw new AssertionError("Cannot construct " + type);
+                if (type == com.zrlog.common.UpdaterTypeEnum.ZIP && !launcher.getCanonicalFile().equals(updater.execFile())) {
+                    throw new AssertionError("ZIP factory did not select the launcher");
+                }
+            }
+        } finally {
+            java.nio.file.Files.deleteIfExists(launcher.toPath());
+            java.nio.file.Files.deleteIfExists(home);
         }
         for (String resource : com.zrlog.updater.spi.UpdateProviders.messageResources("zh_CN")) {
             try (java.io.InputStream input = CatalogSmoke.class.getResourceAsStream(resource)) {

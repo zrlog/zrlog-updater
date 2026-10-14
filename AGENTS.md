@@ -6,6 +6,7 @@
 
 - 各模块使用标准 `src/main`、`src/test` 布局，POM 不继承应用父 POM。
 - 各模块目录名与其 Maven `artifactId` 一致。
+- updater 的选择、创建、启动文件识别及升级专项测试由本仓库维护；宿主装配验收位于 `tests/application-host/src/test/java`，用主工程产物 classpath 运行，不迁回主工程测试目录。
 - `zrlog-updater-spi` 是纯 Java 11 契约，不依赖 base；保留迁入 DTO 的包名与 JSON 字段。
 - `zrlog-updater-common` 维护清单、下载校验、共享流程与公共文案，不注册具体部署 Provider。
 - `zrlog-updater-zip/native/war/faas/docker/deb` 各自维护实现、文案、ServiceLoader 和 Native 元数据，依赖 common，不相互依赖。
