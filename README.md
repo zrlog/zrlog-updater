@@ -1,4 +1,34 @@
-# ZrLog Docker updater
+# ZrLog Updater
+
+应用升级模块与独立 Docker updater 在同一仓库维护。当前完成清单规则和公共 DTO 的
+第一阶段拆分，其他部署方式的执行实现继续逐步迁移。
+
+| 模块 | Maven 构件 | 职责 |
+| --- | --- | --- |
+| `updater-spi` | `com.hibegin:zrlog-updater-spi` | 纯 Java 11 契约、升级 DTO、ServiceLoader 入口；无生产依赖。 |
+| `updater-core` | `com.hibegin:zrlog-updater-core` | 清单路径与 Docker 身份校验、GitHub/dl 来源选择；生产依赖只有 SPI。 |
+| `updater-docker-service` | `com.hibegin:zrlog-docker-updater` | 已有 Compose HTTP 服务、Native 程序和镜像；保持独立轻量依赖。 |
+
+base 通过 SPI 接入实现，主工程将 core 放入发行包，admin 独立开发入口通过
+`updater-dev` profile 装配。缺失实现不会影响 SPI 加载，实际请求升级清单时会明确报错。
+迁移 DTO 保留原包名、字段和 SSE 事件名，HTTP 请求继续由应用的已有工具提供。
+
+```bash
+./mvnw -B -pl updater-spi,updater-core -am clean install
+# 包含原 Docker 服务的完整构建和 JAR/JSON/模块边界验证
+./mvnw -B clean install
+bash scripts/test-application-modules.sh
+```
+
+应用构件需先发布再切换消费者，SPI 可单独构建发布；本地 install 不代表远端已经可用。
+打包脚本、Dockerfile 和下方 Docker 服务使用的程序路径保持 `target/zrlog-updater`。
+
+`Application updater modules` 工作流用 JDK 11 独立验证 SPI/core，并运行
+`bash scripts/test-maven-consumer.sh`：部署到临时文件仓库后，以空 Maven 缓存解析真实
+POM 和 JAR、编译仅依赖 SPI 的消费者，再检查有/无 core 的服务发现。
+此验证不上传远端制品。维护者显式选择 `publish_snapshots=true` 才向 Central snapshot
+仓库发布 parent/SPI/core；使用组织授权的 `OSSRH_USERNAME`、`OSSRH_PASSWORD`。
+正式版本发布另行推进，应用正式 Release Order 须使用已发布的非 SNAPSHOT 构件。
 
 独立 HTTP 服务，接收后台升级任务，使用 Docker Compose 拉取并替换当前项目的 `zrlog`
 服务。运行时、后台及发布流程已接入源码。已有独立预览镜像可用于部署验证；正式使用仍需
@@ -37,8 +67,8 @@ ZRLOG_UPDATER_IMAGE=registry.cn-chengdu.aliyuncs.com/hibegin/zrlog-updater:1.0.0
 
 ## 构建
 
-此 POM 独立于博客主工程父 POM，只引入 Gson；HTTP 服务使用 JDK 的 `jdk.httpserver`。
-构建需要 JDK 21，Native 构建需要对应 GraalVM 和本机 C 工具链。
+仓库 POM 独立于博客主工程父 POM。Docker 服务只引入 Gson，使用 JDK 的 `jdk.httpserver`。
+完整构建需要 JDK 21；SPI/core 可以单独使用 JDK 11 构建。Native 构建需要 GraalVM 和 C 工具链。
 
 ```bash
 ./mvnw -B test package
@@ -183,7 +213,8 @@ ZRLOG_UPDATER_REAL_DOCKER=1 ./mvnw test
 
 ## 仓库边界
 
-本仓库维护独立 Docker 升级服务端和它自己的构建、安装包、镜像。
-主工程维护博客应用的 Docker 镜像、应用清单和 Compose 集成；base 保留 HTTP 客户端、
-版本检查，以及原有 ZIP/Native/WAR 升级路径；admin 提供设置和进度页面。
+本仓库维护应用升级 SPI/core、独立 Docker 服务及其构建、安装包、镜像。
+主工程装配应用构件，维护博客应用的 Docker 镜像、应用清单和 Compose 集成；base 保留
+宿主 HTTP 适配和迁移期兼容入口，原有部署升级执行实现按任务逐步迁入；admin 提供
+设置、鉴权和标准 SSE 进度页面。
 updater 不引入页面、数据库、安装器或主题模块。

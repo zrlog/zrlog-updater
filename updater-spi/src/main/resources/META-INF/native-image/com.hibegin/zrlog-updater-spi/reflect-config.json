@@ -1,0 +1,12 @@
+[
+  {"name":"com.zrlog.common.vo.Version","allDeclaredFields":true,"allDeclaredConstructors":true},
+  {"name":"com.zrlog.common.vo.Version$DownloadSource","allDeclaredFields":true,"allDeclaredConstructors":true},
+  {"name":"com.zrlog.common.updater.UpgradeProgressEvent$Data","allDeclaredFields":true,"allDeclaredConstructors":true},
+  {"name":"com.zrlog.common.updater.docker.DockerUpdaterProtocol$Image","allDeclaredFields":true,"allDeclaredConstructors":true},
+  {"name":"com.zrlog.common.updater.docker.DockerUpdaterProtocol$ErrorResponse","allDeclaredFields":true,"allDeclaredConstructors":true},
+  {"name":"com.zrlog.common.updater.docker.DockerUpdaterProtocol$Capabilities","allDeclaredFields":true,"allDeclaredConstructors":true},
+  {"name":"com.zrlog.common.updater.docker.DockerUpdaterProtocol$Settings","allDeclaredFields":true,"allDeclaredConstructors":true},
+  {"name":"com.zrlog.common.updater.docker.DockerUpdaterProtocol$SettingsResponse","allDeclaredFields":true,"allDeclaredConstructors":true},
+  {"name":"com.zrlog.common.updater.docker.DockerUpdaterProtocol$UpgradeRequest","allDeclaredFields":true,"allDeclaredConstructors":true},
+  {"name":"com.zrlog.common.updater.docker.DockerUpdaterProtocol$Job","allDeclaredFields":true,"allDeclaredConstructors":true}
+]

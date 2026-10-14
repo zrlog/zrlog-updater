@@ -1,4 +1,5 @@
-/target/
+**/target/
+.flattened-pom.xml
 /dist/
 /.idea/
 /.vscode/
