@@ -28,6 +28,27 @@ class PackageUpdaterContract {
         if (!legacy.getZipDownloadUrl().equals(PackageDownloadSource.select(legacy, false, "dl"))) {
             throw new AssertionError("The packaged base facade cannot use updater SPI");
         }
-        System.out.println(args[0] + " packaged updater discovery, messages and host compatibility passed");
+        java.io.File target = new java.io.File(args[1]);
+        String classPath = System.getProperty("java.class.path");
+        try {
+            com.zrlog.common.Updater updater;
+            if (args[0].equals("ZIP")) {
+                System.setProperty("java.class.path", target.toString());
+                updater = com.zrlog.web.ApplicationUpdaterFactory.create(new String[]{"--port=18081"}, null);
+            } else {
+                updater = com.zrlog.web.ApplicationUpdaterFactory.createWar(target);
+            }
+            com.zrlog.common.UpdaterTypeEnum type = args[0].equals("ZIP")
+                    ? com.zrlog.common.UpdaterTypeEnum.ZIP : com.zrlog.common.UpdaterTypeEnum.WAR;
+            if (updater == null || updater.getType() != type || !target.getCanonicalFile().equals(updater.execFile().getCanonicalFile())) {
+                throw new AssertionError("The packaged application cannot automatically assemble its updater");
+            }
+            if (!updater.execFile().equals(com.zrlog.common.updater.UpdaterHosts.context(updater).executable)) {
+                throw new AssertionError("The legacy adapter lost the resolved startup target");
+            }
+        } finally {
+            System.setProperty("java.class.path", classPath);
+        }
+        System.out.println(args[0] + " packaged updater automatic assembly, messages and host compatibility passed");
     }
 }

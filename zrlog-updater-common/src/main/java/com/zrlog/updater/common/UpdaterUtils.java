@@ -1,13 +1,15 @@
 package com.zrlog.updater.common;
 
 import com.zrlog.common.UpdaterTypeEnum;
-import com.zrlog.updater.spi.ApplicationUpdater;
+import com.zrlog.updater.spi.UpdateContext;
+import com.zrlog.updater.spi.UpdateProvider;
+import com.zrlog.updater.spi.UpdateProviders;
+import com.zrlog.updater.spi.UpdateSession;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.LinkedHashSet;
 import java.util.Set;
-import java.util.function.BiFunction;
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
@@ -29,20 +31,30 @@ public final class UpdaterUtils {
         return nativeImage ? UpdaterTypeEnum.NATIVE_IMAGE : UpdaterTypeEnum.ZIP;
     }
 
-    /** The factory assembles the selected SPI provider with host paths, HTTP and lifecycle. */
-    public static <T extends ApplicationUpdater> T getUpdater(UpdaterTypeEnum type, File executable,
-                                                             String classPath, File applicationHome,
-                                                             BiFunction<UpdaterTypeEnum, File, T> factory) {
-        File target = executable;
+    /** Selects and creates the installed SPI provider using the supplied host capabilities. */
+    public static UpdateSession create(UpdaterRuntime runtime, UpdateContext host) {
+        return create(runtime, host, UpdateProvider.class.getClassLoader());
+    }
+
+    static UpdateSession create(UpdaterRuntime runtime, UpdateContext host, ClassLoader loader) {
+        UpdaterTypeEnum type = runtime.servlet ? UpdaterTypeEnum.WAR
+                : selectType(runtime.docker, runtime.faas, runtime.packageType, runtime.nativeImage);
+        File target = host.executable;
         try {
             if (type == UpdaterTypeEnum.ZIP) {
-                target = findLauncherJar(classPath, applicationHome);
+                target = findLauncherJar(runtime.classPath, runtime.applicationHome);
                 if (target == null) {
                     LOGGER.fine("No unambiguous ZrLog launcher JAR found; ZIP updater is unavailable");
                     return null;
                 }
             }
-            return factory.apply(type, target);
+            UpdateContext.Builder context = new UpdateContext.Builder(host);
+            context.executable = target;
+            if (type == UpdaterTypeEnum.DOCKER && host.docker != null) {
+                context.metadataOrigin = host.docker.metadataOrigin;
+                context.manifestFilename = host.docker.manifestFilename;
+            }
+            return UpdateProviders.create(loader, type, context.build());
         } catch (Throwable e) {
             LOGGER.log(Level.WARNING, "Create " + type + " updater failed, target file: " + target, e);
             return null;

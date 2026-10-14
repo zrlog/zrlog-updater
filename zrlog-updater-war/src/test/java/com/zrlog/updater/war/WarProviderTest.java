@@ -27,4 +27,13 @@ public class WarProviderTest {
         }
         return result;
     }
+    @Test public void releasesJdbcDriversBeforeStoppingTheHost() {
+        java.util.List<String> calls = new java.util.ArrayList<>();
+        com.zrlog.updater.spi.UpdateContext.Builder host = new com.zrlog.updater.spi.UpdateContext.Builder();
+        host.executable = new java.io.File("ROOT.war");
+        host.releaseJdbcDrivers = () -> calls.add("jdbc");
+        host.stop = () -> calls.add("stop");
+        UpdateProviders.create(UpdaterTypeEnum.WAR, host.build()).updater.restartProcessAsync(null);
+        assertEquals(java.util.List.of("jdbc", "stop"), calls);
+    }
 }

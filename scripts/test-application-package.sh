@@ -14,5 +14,7 @@ repository_root=$(cd "$(dirname "$0")/.." && pwd)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 unzip -qq "$archive" -d "$work/package"
+target=$archive
+[[ $package_type != ZIP ]] || target="$work/package/zrlog-starter.jar"
 java --source 11 -cp "$work/package/$library_root/*" \
-  "$repository_root/tests/application-package/PackageUpdaterContract.java" "$package_type"
+  "$repository_root/tests/application-package/PackageUpdaterContract.java" "$package_type" "$target"

@@ -28,4 +28,12 @@ public final class UpdateProviders {
     public static UpdateProvider get(UpdaterTypeEnum type) {
         return find(type).orElseThrow(() -> new IllegalStateException("No updater implementation installed for " + type));
     }
+    public static UpdateSession create(UpdaterTypeEnum type, UpdateContext context) {
+        return create(UpdateProvider.class.getClassLoader(), type, context);
+    }
+    public static UpdateSession create(ClassLoader loader, UpdaterTypeEnum type, UpdateContext context) {
+        UpdateProvider provider = load(loader, type)
+                .orElseThrow(() -> new IllegalStateException("No updater implementation installed for " + type));
+        return new UpdateSession(context, provider.create(context));
+    }
 }

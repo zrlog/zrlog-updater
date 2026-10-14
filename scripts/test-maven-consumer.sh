@@ -151,23 +151,27 @@ EOF
 cat > "$work/common-consumer/src/main/java/CommonConsumer.java" <<'EOF'
 import com.zrlog.common.UpdaterTypeEnum;
 import com.zrlog.updater.common.UpdaterUtils;
+import com.zrlog.updater.common.UpdaterRuntime;
 import com.zrlog.updater.spi.UpdateProviders;
+import com.zrlog.updater.spi.UpdateContext;
+import com.zrlog.updater.spi.UpdateSession;
 
 public final class CommonConsumer {
     public static void main(String[] args) {
-        if (UpdateProviders.find(UpdaterTypeEnum.DEB).isPresent()) throw new AssertionError("Common must not include a deployment provider");
+        boolean assembled = args.length != 0;
+        if (UpdateProviders.find(UpdaterTypeEnum.DEB).isPresent() != assembled) throw new AssertionError("Unexpected deployment provider assembly");
         if (UpdaterUtils.selectType(true, true, "deb", true) != UpdaterTypeEnum.DOCKER) throw new AssertionError("Deployment priority changed");
         java.io.File executable = new java.io.File("zrlog");
-        java.util.concurrent.atomic.AtomicBoolean called = new java.util.concurrent.atomic.AtomicBoolean();
-        UpdaterUtils.getUpdater(UpdaterTypeEnum.DEB, executable, "", new java.io.File("."), (type, target) -> {
-            if (type != UpdaterTypeEnum.DEB || target != executable) throw new AssertionError("Host factory input changed");
-            called.set(true);
-            return null;
-        });
-        if (!called.get()) throw new AssertionError("Host factory was not invoked");
-        System.out.println("Common-only Maven construction API consumer passed");
+        UpdateContext.Builder host = new UpdateContext.Builder();
+        host.executable = executable;
+        UpdateSession session = UpdaterUtils.create(new UpdaterRuntime(false, false, "deb", false, "", new java.io.File(".")), host.build());
+        if (assembled && (session == null || session.updater.getType() != UpdaterTypeEnum.DEB || session.context.executable != executable))
+            throw new AssertionError("SPI did not automatically construct the deployment updater");
+        if (!assembled && session != null) throw new AssertionError("Common must not include a deployment provider");
+        System.out.println("Common-only Maven automatic assembly API consumer passed: " + assembled);
     }
 }
 EOF
 ./mvnw -B -ntp -U -f "$work/common-consumer/pom.xml" "-Dmaven.repo.local=$work/consumer-cache" verify
 java -cp "$work/common-consumer/target/classes:$spi:$common:$gson" CommonConsumer
+java -cp "$work/common-consumer/target/classes:$classpath" CommonConsumer assembled

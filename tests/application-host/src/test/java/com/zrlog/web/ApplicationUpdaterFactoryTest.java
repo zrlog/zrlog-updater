@@ -25,10 +25,13 @@ public class ApplicationUpdaterFactoryTest {
         String original = System.getProperty("java.class.path");
         try {
             System.setProperty("java.class.path", launcher + File.pathSeparator + dependency);
-            Updater updater = ApplicationUpdaterFactory.create(new String[0], null);
+            String[] arguments = {"--port=18081"};
+            Updater updater = ApplicationUpdaterFactory.create(arguments, null);
             assertNotNull(updater);
             assertEquals(UpdaterTypeEnum.ZIP, updater.getType());
             assertEquals(launcher.getCanonicalFile(), updater.execFile());
+            assertEquals(launcher.getCanonicalFile(), com.zrlog.common.updater.UpdaterHosts.context(updater).executable);
+            assertArrayEquals(arguments, com.zrlog.common.updater.UpdaterHosts.context(updater).arguments);
         } finally {
             System.setProperty("java.class.path", original);
         }

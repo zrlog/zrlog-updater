@@ -19,6 +19,7 @@ public final class UpdateContext {
     public final AwsLambdaUpdateConfig aws;
     public final Predicate<String> bundledTheme;
     public final Runnable stop;
+    public final Runnable releaseJdbcDrivers;
     public final IntConsumer exit;
     public final UpdateHttp http;
     public final DockerConnection docker;
@@ -31,7 +32,8 @@ public final class UpdateContext {
         arguments = b.arguments.clone(); jvmArguments = List.copyOf(b.jvmArguments); port = b.port; currentPort = b.currentPort;
         fileArch = b.fileArch; metadataOrigin = b.metadataOrigin; manifestFilename = b.manifestFilename;
         packageSource = b.packageSource; lambda = b.lambda; aws = b.aws;
-        bundledTheme = b.bundledTheme; stop = b.stop; exit = b.exit; http = b.http; docker = b.docker;
+        bundledTheme = b.bundledTheme; stop = b.stop; releaseJdbcDrivers = b.releaseJdbcDrivers;
+        exit = b.exit; http = b.http; docker = b.docker;
         debRequests = b.debRequests; debState = b.debState; debWork = b.debWork;
         packageName = b.packageName; serviceName = b.serviceName;
     }
@@ -43,7 +45,8 @@ public final class UpdateContext {
             root=c.root; temp=c.temp; updateTemp=c.updateTemp; executable=c.executable;
             arguments=c.arguments; jvmArguments=c.jvmArguments; port=c.port; currentPort=c.currentPort;
             fileArch=c.fileArch; metadataOrigin=c.metadataOrigin; manifestFilename=c.manifestFilename; packageSource=c.packageSource;
-            lambda=c.lambda; aws=c.aws; bundledTheme=c.bundledTheme; stop=c.stop; exit=c.exit; http=c.http; docker=c.docker;
+            lambda=c.lambda; aws=c.aws; bundledTheme=c.bundledTheme; stop=c.stop; releaseJdbcDrivers=c.releaseJdbcDrivers;
+            exit=c.exit; http=c.http; docker=c.docker;
             debRequests=c.debRequests; debState=c.debState; debWork=c.debWork; packageName=c.packageName; serviceName=c.serviceName;
         }
         public File root = new File("."), temp = new File("temp"), updateTemp = new File("conf/update-temp"), executable;
@@ -56,6 +59,7 @@ public final class UpdateContext {
         public AwsLambdaUpdateConfig aws = AwsLambdaUpdateConfig.fromEnvironment();
         public Predicate<String> bundledTheme = path -> false;
         public Runnable stop = () -> { };
+        public Runnable releaseJdbcDrivers = () -> { };
         public IntConsumer exit = System::exit;
         public UpdateHttp http;
         public DockerConnection docker;

@@ -72,6 +72,7 @@ public class WarUpdater implements ApplicationUpdater {
 
      @Override
     public void restartProcessAsync(Version upgradeVersion) {
+        context.releaseJdbcDrivers.run();
         context.stop.run();
     }
 
