@@ -30,6 +30,10 @@ base 通过 SPI 接入实现，主工程按发行方式选入实现构件，admi
 `tests/application-host/src/test/java` 维护 Web 工厂、WAR/ZIP 装配和 deb CLI 的验收，
 通过 `bash scripts/test-application-host.sh '<应用 test classpath>'` 编译并运行。
 主工程提供编译产物和 classpath，专项测试源码留在 updater；默认模块自测可独立运行。
+实际 ZIP/WAR 包的 Provider、文案和 base 兼容入口验收在
+`tests/application-package/PackageUpdaterContract.java`，由
+`bash scripts/test-application-package.sh /path/to/application.zip`（或 `.war`）运行。
+主工程的包契约只负责包结构、依赖和构建信息，不维护 updater 行为测试源码。
 
 各 Provider 在自己的 `zrlog-updater-<类型>/src/main/resources/i18n/updater/<类型>/backend_*.properties` 维护文案；
 检查、下载、重启等共用消息在 common。ZIP、native_image、WAR、FaaS、Docker、deb 的

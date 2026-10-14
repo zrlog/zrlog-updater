@@ -10,7 +10,7 @@
 - `zrlog-updater-spi` 是纯 Java 11 契约，不依赖 base；保留迁入 DTO 的包名与 JSON 字段。
 - `zrlog-updater-common` 维护清单、下载校验、共享流程与公共文案，不注册具体部署 Provider。
 - `zrlog-updater-zip/native/war/faas/docker/deb` 各自维护实现、文案、ServiceLoader 和 Native 元数据，依赖 common，不相互依赖。
-- 消费者只编译依赖 SPI，主工程按发行方式装配所需的运行时实现；不得重新合并为 core。
+- base/admin/install 只编译依赖 SPI，主工程编译依赖 common 的共享创建流程，并按发行方式装配所需的运行时实现；不得重新合并为 core。
 - `zrlog-docker-updater` 保留 `zrlog-docker-updater` 坐标及根 `target/zrlog-updater` 路径。
 - 运行时只引入必要的轻量依赖，不引入 admin、install、blog、数据库或主题模块。
 - Docker 服务的元数据源和清单名来自 `zrlog-docker-updater/src/main/resources/build.properties`。
@@ -30,6 +30,8 @@
 ```bash
 ./mvnw -B test package
 bash scripts/test-application-modules.sh
+bash scripts/test-application-host.sh '<application test classpath>'
+bash scripts/test-application-package.sh /path/to/application.zip
 bash scripts/test-package.sh
 bash scripts/test-github-release.sh
 ./mvnw -B -Pnative -DskipTests package
