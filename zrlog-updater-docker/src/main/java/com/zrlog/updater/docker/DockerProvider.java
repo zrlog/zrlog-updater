@@ -9,6 +9,9 @@ import com.zrlog.updater.spi.UpdateContext;
 import com.zrlog.updater.spi.UpdateRequest;
 
 public final class DockerProvider extends PackageUpdateProvider {
+    public UpdateVersionHandler manualHandler(UpdateContext context, UpdateRequest request) {
+        return handler(context, request);
+    }
     public DockerProvider() { super(UpdaterTypeEnum.DOCKER, "/i18n/updater/docker/backend"); }
     public ApplicationUpdater create(UpdateContext context) { return new DockerImageUpdater(context); }
     public UpdateVersionHandler handler(UpdateContext context, UpdateRequest request) {

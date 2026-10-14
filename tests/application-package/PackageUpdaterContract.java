@@ -1,4 +1,3 @@
-import com.zrlog.common.updater.PackageDownloadSource;
 import com.zrlog.common.vo.Version;
 import com.zrlog.updater.spi.UpdateCatalogs;
 
@@ -25,8 +24,8 @@ class PackageUpdaterContract {
         }
         Version legacy = new Version();
         legacy.setZipDownloadUrl("https://dl.zrlog.com/release/zrlog.zip");
-        if (!legacy.getZipDownloadUrl().equals(PackageDownloadSource.select(legacy, false, "dl"))) {
-            throw new AssertionError("The packaged base facade cannot use updater SPI");
+        if (!legacy.getZipDownloadUrl().equals(UpdateCatalogs.getInstance().selectPackageSource(legacy, false, "dl"))) {
+            throw new AssertionError("The packaged catalog cannot use updater SPI");
         }
         java.io.File target = new java.io.File(args[1]);
         String classPath = System.getProperty("java.class.path");
