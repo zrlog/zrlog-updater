@@ -132,3 +132,42 @@ for module in zip native war faas docker deb; do
   classpath="$classpath:$artifact"
 done
 java -cp "$classpath" Consumer
+
+# The construction API must also compile with common alone, without deployment or application artifacts.
+mkdir -p "$work/common-consumer/src/main/java"
+cat > "$work/common-consumer/pom.xml" <<EOF
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.zrlog.test</groupId><artifactId>common-consumer</artifactId><version>1</version>
+  <properties><maven.compiler.release>11</maven.compiler.release></properties>
+  <repositories><repository><id>updater-test</id><url>$repository_url</url>
+    <releases><enabled>$releases</enabled><checksumPolicy>fail</checksumPolicy></releases>
+    <snapshots><enabled>$snapshots</enabled><checksumPolicy>fail</checksumPolicy></snapshots>
+  </repository></repositories>
+  <dependencies><dependency><groupId>com.hibegin</groupId><artifactId>zrlog-updater-common</artifactId><version>$version</version></dependency></dependencies>
+  <build><plugins><plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId><version>3.16.0</version></plugin></plugins></build>
+</project>
+EOF
+cat > "$work/common-consumer/src/main/java/CommonConsumer.java" <<'EOF'
+import com.zrlog.common.UpdaterTypeEnum;
+import com.zrlog.updater.common.UpdaterUtils;
+import com.zrlog.updater.spi.UpdateProviders;
+
+public final class CommonConsumer {
+    public static void main(String[] args) {
+        if (UpdateProviders.find(UpdaterTypeEnum.DEB).isPresent()) throw new AssertionError("Common must not include a deployment provider");
+        if (UpdaterUtils.selectType(true, true, "deb", true) != UpdaterTypeEnum.DOCKER) throw new AssertionError("Deployment priority changed");
+        java.io.File executable = new java.io.File("zrlog");
+        java.util.concurrent.atomic.AtomicBoolean called = new java.util.concurrent.atomic.AtomicBoolean();
+        UpdaterUtils.getUpdater(UpdaterTypeEnum.DEB, executable, "", new java.io.File("."), (type, target) -> {
+            if (type != UpdaterTypeEnum.DEB || target != executable) throw new AssertionError("Host factory input changed");
+            called.set(true);
+            return null;
+        });
+        if (!called.get()) throw new AssertionError("Host factory was not invoked");
+        System.out.println("Common-only Maven construction API consumer passed");
+    }
+}
+EOF
+./mvnw -B -ntp -U -f "$work/common-consumer/pom.xml" "-Dmaven.repo.local=$work/consumer-cache" verify
+java -cp "$work/common-consumer/target/classes:$spi:$common:$gson" CommonConsumer
