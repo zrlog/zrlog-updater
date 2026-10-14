@@ -30,8 +30,8 @@ public class ApplicationUpdaterFactoryTest {
             assertNotNull(updater);
             assertEquals(UpdaterTypeEnum.ZIP, updater.getType());
             assertEquals(launcher.getCanonicalFile(), updater.execFile());
-            assertEquals(launcher.getCanonicalFile(), com.zrlog.common.updater.UpdaterHosts.context(updater).executable);
-            assertArrayEquals(arguments, com.zrlog.common.updater.UpdaterHosts.context(updater).arguments);
+            assertEquals(launcher.getCanonicalFile(), com.zrlog.common.adapter.UpdaterHosts.context(updater).executable);
+            assertArrayEquals(arguments, com.zrlog.common.adapter.UpdaterHosts.context(updater).arguments);
         } finally {
             System.setProperty("java.class.path", original);
         }

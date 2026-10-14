@@ -42,7 +42,7 @@ class PackageUpdaterContract {
             if (updater == null || updater.getType() != type || !target.getCanonicalFile().equals(updater.execFile().getCanonicalFile())) {
                 throw new AssertionError("The packaged application cannot automatically assemble its updater");
             }
-            if (!updater.execFile().equals(com.zrlog.common.updater.UpdaterHosts.context(updater).executable)) {
+            if (!updater.execFile().equals(com.zrlog.common.adapter.UpdaterHosts.context(updater).executable)) {
                 throw new AssertionError("The legacy adapter lost the resolved startup target");
             }
         } finally {

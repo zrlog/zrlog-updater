@@ -1,6 +1,6 @@
 package com.zrlog.web;
 import com.zrlog.common.UpdaterTypeEnum;
-import com.zrlog.common.updater.UpdaterHosts;
+import com.zrlog.common.adapter.UpdaterHosts;
 import com.zrlog.common.vo.Version;
 import com.zrlog.updater.spi.*;
 import org.junit.Test;
