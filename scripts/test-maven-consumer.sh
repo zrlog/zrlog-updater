@@ -2,13 +2,38 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# Publish only to a temporary file repository, then resolve with an empty consumer cache.
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
-version=4.0.0-consumer-test-SNAPSHOT
-./mvnw -B -ntp -pl '!updater-docker-service' \
-  "-Drevision=$version" "-Dmaven.repo.local=$work/producer-cache" -DskipTests \
-  "-DaltSnapshotDeploymentRepository=updater-test::file://$work/repository" deploy
+case ${1:-} in
+  '')
+    # Local contract test: never upload artifacts to a remote repository.
+    version=4.0.0-consumer-test-SNAPSHOT
+    repository_url="file://$work/repository"
+    releases=false
+    snapshots=true
+    ./mvnw -B -ntp -pl '!zrlog-docker-updater' \
+      "-Drevision=$version" "-Dmaven.repo.local=$work/producer-cache" -DskipTests \
+      "-DaltSnapshotDeploymentRepository=updater-test::$repository_url" deploy
+    ;;
+  --central-snapshots)
+    version=${2:-$(sed -n 's/.*<revision>\([^<]*\)<\/revision>.*/\1/p' pom.xml)}
+    [[ $version == *-SNAPSHOT ]]
+    repository_url=https://central.sonatype.com/repository/maven-snapshots/
+    releases=false
+    snapshots=true
+    ;;
+  --central-release)
+    version=${2:?A published release version is required}
+    [[ $version != *SNAPSHOT* ]]
+    repository_url=https://repo.maven.apache.org/maven2/
+    releases=true
+    snapshots=false
+    ;;
+  *) printf 'Usage: %s [--central-snapshots [version] | --central-release version]\n' "$0" >&2; exit 2 ;;
+esac
+compare_build=${3:-}
+[[ -z $compare_build || $compare_build == --compare-build ]]
+printf 'Consumer repository: %s\nConsumer version: %s\n' "$repository_url" "$version"
 
 mkdir -p "$work/consumer/src/main/java"
 cat > "$work/consumer/pom.xml" <<EOF
@@ -16,8 +41,9 @@ cat > "$work/consumer/pom.xml" <<EOF
   <modelVersion>4.0.0</modelVersion>
   <groupId>com.zrlog.test</groupId><artifactId>updater-consumer</artifactId><version>1</version>
   <properties><maven.compiler.release>11</maven.compiler.release><project.build.sourceEncoding>UTF-8</project.build.sourceEncoding></properties>
-  <repositories><repository><id>updater-test</id><url>file://$work/repository</url>
-    <releases><enabled>false</enabled></releases><snapshots><enabled>true</enabled></snapshots>
+  <repositories><repository><id>updater-test</id><url>$repository_url</url>
+    <releases><enabled>$releases</enabled><checksumPolicy>fail</checksumPolicy></releases>
+    <snapshots><enabled>$snapshots</enabled><checksumPolicy>fail</checksumPolicy></snapshots>
   </repository></repositories>
   <dependencies>
     <dependency><groupId>com.hibegin</groupId><artifactId>zrlog-updater-spi</artifactId><version>$version</version></dependency>
@@ -66,7 +92,31 @@ public final class Consumer {
     }
 }
 EOF
-./mvnw -B -ntp -f "$work/consumer/pom.xml" "-Dmaven.repo.local=$work/consumer-cache" verify
+./mvnw -B -ntp -U -f "$work/consumer/pom.xml" "-Dmaven.repo.local=$work/consumer-cache" verify
+for module in parent spi common zip native war faas docker deb; do
+  directory="$work/consumer-cache/com/hibegin/zrlog-updater-$module/$version"
+  pom="$directory/zrlog-updater-$module-$version.pom"
+  [[ -f $pom ]]
+  if rg -q '\$\{revision\}' "$pom"; then
+    printf 'Unresolved revision in published POM: %s\n' "$pom" >&2
+    exit 1
+  fi
+  sha256sum "$pom"
+  if [[ $compare_build == --compare-build ]]; then
+    build_directory="$PWD/zrlog-updater-$module"
+    [[ $module != parent ]] || build_directory="$PWD"
+    cmp "$pom" "$build_directory/.flattened-pom.xml"
+  fi
+  if [[ $module != parent ]]; then
+    sha256sum "$directory/zrlog-updater-$module-$version.jar"
+    if [[ $compare_build == --compare-build ]]; then
+      cmp "$directory/zrlog-updater-$module-$version.jar" "$build_directory/target/zrlog-updater-$module-$version.jar"
+    fi
+  fi
+  if [[ $snapshots == true ]]; then
+    sed -n '/<snapshot>/,/<\/snapshot>/p' "$directory/maven-metadata-updater-test.xml"
+  fi
+done
 spi="$work/consumer-cache/com/hibegin/zrlog-updater-spi/$version/zrlog-updater-spi-$version.jar"
 java -cp "$work/consumer/target/classes:$spi" Consumer absent
 gson="$work/consumer-cache/com/google/code/gson/gson/2.14.0/gson-2.14.0.jar"

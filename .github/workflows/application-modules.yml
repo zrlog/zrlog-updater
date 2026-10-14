@@ -3,6 +3,7 @@ name: Application updater modules
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
     inputs:
@@ -13,6 +14,10 @@ on:
 
 permissions:
   contents: read
+
+defaults:
+  run:
+    shell: bash
 
 concurrency:
   group: updater-application-${{ github.ref }}
@@ -32,13 +37,13 @@ jobs:
           java-version: '11'
           cache: maven
       - name: Verify application modules without the Docker service
-        run: ./mvnw -B -ntp -pl '!updater-docker-service' clean verify
+        run: ./mvnw -B -ntp -pl '!zrlog-docker-updater' clean verify
       - name: Resolve published POMs and SPI from an empty consumer cache
         run: bash scripts/test-maven-consumer.sh
 
   publish:
     needs: verify
-    if: github.event_name == 'workflow_dispatch' && inputs.publish_snapshots
+    if: (github.event_name == 'workflow_dispatch' && inputs.publish_snapshots) || (startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-'))
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:
@@ -54,6 +59,7 @@ jobs:
           server-username: OSSRH_USERNAME
           server-password: OSSRH_PASSWORD
       - name: Publish SPI/common and deployment module snapshots
+        if: github.event_name == 'workflow_dispatch' && inputs.publish_snapshots
         env:
           OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
           OSSRH_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
@@ -61,4 +67,42 @@ jobs:
           : "${OSSRH_USERNAME:?Central username unavailable}" "${OSSRH_PASSWORD:?Central password unavailable}"
           version=$(sed -n 's/.*<revision>\([^<]*\)<\/revision>.*/\1/p' pom.xml)
           [[ $version == *-SNAPSHOT ]]
-          ./mvnw -B -ntp -pl '!updater-docker-service' -Psnapshot clean deploy
+          ./mvnw -B -ntp -pl '!zrlog-docker-updater' -Psnapshot clean deploy
+      - name: Verify release tag and signing credentials
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+          OSSRH_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          : "${OSSRH_USERNAME:?Central username unavailable}" "${OSSRH_PASSWORD:?Central password unavailable}"
+          : "${GPG_PRIVATE_KEY:?Signing key unavailable}" "${MAVEN_GPG_PASSPHRASE:?Signing passphrase unavailable}"
+          version=$(sed -n 's/.*<revision>\([^<]*\)<\/revision>.*/\1/p' pom.xml)
+          [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && $GITHUB_REF_NAME == "v$version" ]]
+          printf '%s' "$GPG_PRIVATE_KEY" | gpg --batch --import
+      - name: Publish signed releases to Maven Central
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+          OSSRH_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: ./mvnw -B -ntp -pl '!zrlog-docker-updater' -Pcentral-release clean deploy
+      - name: Resolve Central artifacts from an empty consumer cache and compare published bytes
+        run: |
+          version=$(sed -n 's/.*<revision>\([^<]*\)<\/revision>.*/\1/p' pom.xml)
+          mode=--central-release
+          [[ $version != *-SNAPSHOT ]] || mode=--central-snapshots
+          for attempt in 1 2 3; do
+            if bash scripts/test-maven-consumer.sh "$mode" "$version" --compare-build | tee central-consumer.log; then
+              exit 0
+            fi
+            [[ $attempt != 3 ]] || exit 1
+            sleep 10
+          done
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: central-maven-consumer-evidence
+          path: central-consumer.log
+          if-no-files-found: ignore

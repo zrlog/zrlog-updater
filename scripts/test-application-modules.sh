@@ -4,9 +4,9 @@ cd "$(dirname "$0")/.."
 version=${1:-$(sed -n 's/.*<revision>\([^<]*\)<\/revision>.*/\1/p' pom.xml)}
 gson="${MAVEN_REPO_LOCAL:-$HOME/.m2/repository}/com/google/code/gson/gson/2.14.0/gson-2.14.0.jar"
 [[ -f $gson ]]
-classpath="$gson:updater-common/target/test-classes"
+classpath="$gson:zrlog-updater-common/target/test-classes"
 for module in spi common zip native war faas docker deb; do
-  artifact="updater-$module/target/zrlog-updater-$module-${version}.jar"
+  artifact="zrlog-updater-$module/target/zrlog-updater-$module-${version}.jar"
   [[ -f $artifact ]]
   classpath="$classpath:$artifact"
   if jar tf "$artifact" | rg -q '^com/zrlog/(admin|install|blog|model|business)/'; then
