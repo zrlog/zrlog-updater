@@ -23,21 +23,25 @@
         <project.build.outputTimestamp>2026-10-14T00:00:00Z</project.build.outputTimestamp>
     </properties>
     <modules>
-        <module>updater-spi</module>
-        <module>updater-common</module>
-        <module>updater-zip</module>
-        <module>updater-native</module>
-        <module>updater-war</module>
-        <module>updater-faas</module>
-        <module>updater-docker</module>
-        <module>updater-deb</module>
-        <module>updater-docker-service</module>
+        <module>zrlog-updater-spi</module>
+        <module>zrlog-updater-common</module>
+        <module>zrlog-updater-zip</module>
+        <module>zrlog-updater-native</module>
+        <module>zrlog-updater-war</module>
+        <module>zrlog-updater-faas</module>
+        <module>zrlog-updater-docker</module>
+        <module>zrlog-updater-deb</module>
+        <module>zrlog-docker-updater</module>
     </modules>
     <build><plugins>
         <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId><version>3.16.0</version></plugin>
         <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><version>3.5.4</version></plugin>
         <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-jar-plugin</artifactId><version>3.5.1</version></plugin>
         <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-deploy-plugin</artifactId><version>3.1.4</version></plugin>
+        <plugin>
+            <groupId>org.apache.maven.plugins</groupId><artifactId>maven-source-plugin</artifactId><version>3.4.0</version>
+            <executions><execution><id>attach-sources</id><goals><goal>jar-no-fork</goal></goals></execution></executions>
+        </plugin>
         <plugin>
             <groupId>org.codehaus.mojo</groupId><artifactId>flatten-maven-plugin</artifactId><version>1.7.3</version>
             <configuration><flattenMode>resolveCiFriendliesOnly</flattenMode><updatePomFile>true</updatePomFile></configuration>
@@ -47,9 +51,39 @@
             </executions>
         </plugin>
     </plugins></build>
-    <profiles><profile><id>snapshot</id>
-        <distributionManagement><snapshotRepository>
-            <id>central</id><url>https://central.sonatype.com/repository/maven-snapshots/</url>
-        </snapshotRepository></distributionManagement>
-    </profile></profiles>
+    <profiles>
+        <profile><id>snapshot</id>
+            <distributionManagement><snapshotRepository>
+                <id>central</id><url>https://central.sonatype.com/repository/maven-snapshots/</url>
+            </snapshotRepository></distributionManagement>
+            <build><plugins><plugin>
+                <groupId>org.apache.maven.plugins</groupId><artifactId>maven-deploy-plugin</artifactId>
+                <configuration><deployAtEnd>true</deployAtEnd><skip>releases</skip></configuration>
+            </plugin></plugins></build>
+        </profile>
+        <profile><id>central-release</id>
+            <build><plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId><artifactId>maven-enforcer-plugin</artifactId><version>3.6.2</version>
+                    <executions><execution><id>require-release-version</id><goals><goal>enforce</goal></goals>
+                        <configuration><rules><requireReleaseVersion/><requireReleaseDeps/></rules></configuration>
+                    </execution></executions>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId><artifactId>maven-javadoc-plugin</artifactId><version>3.12.0</version>
+                    <executions><execution><id>attach-javadocs</id><goals><goal>jar</goal></goals></execution></executions>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId><artifactId>maven-gpg-plugin</artifactId><version>3.2.8</version>
+                    <executions><execution><id>sign-artifacts</id><phase>verify</phase><goals><goal>sign</goal></goals></execution></executions>
+                    <configuration><passphraseEnvName>MAVEN_GPG_PASSPHRASE</passphraseEnvName></configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.sonatype.central</groupId><artifactId>central-publishing-maven-plugin</artifactId><version>0.11.0</version>
+                    <extensions>true</extensions>
+                    <configuration><publishingServerId>central</publishingServerId><autoPublish>true</autoPublish><waitUntil>published</waitUntil></configuration>
+                </plugin>
+            </plugins></build>
+        </profile>
+    </profiles>
 </project>

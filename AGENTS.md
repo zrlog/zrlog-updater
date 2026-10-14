@@ -5,13 +5,14 @@
 主工程负责装配，base 提供宿主适配，admin 保留页面和标准 SSE。
 
 - 各模块使用标准 `src/main`、`src/test` 布局，POM 不继承应用父 POM。
-- `updater-spi` 是纯 Java 11 契约，不依赖 base；保留迁入 DTO 的包名与 JSON 字段。
-- `updater-common` 维护清单、下载校验、共享流程与公共文案，不注册具体部署 Provider。
-- `updater-zip/native/war/faas/docker/deb` 各自维护实现、文案、ServiceLoader 和 Native 元数据，依赖 common，不相互依赖。
+- 各模块目录名与其 Maven `artifactId` 一致。
+- `zrlog-updater-spi` 是纯 Java 11 契约，不依赖 base；保留迁入 DTO 的包名与 JSON 字段。
+- `zrlog-updater-common` 维护清单、下载校验、共享流程与公共文案，不注册具体部署 Provider。
+- `zrlog-updater-zip/native/war/faas/docker/deb` 各自维护实现、文案、ServiceLoader 和 Native 元数据，依赖 common，不相互依赖。
 - 消费者只编译依赖 SPI，主工程按发行方式装配所需的运行时实现；不得重新合并为 core。
-- `updater-docker-service` 保留 `zrlog-docker-updater` 坐标及根 `target/zrlog-updater` 路径。
+- `zrlog-docker-updater` 保留 `zrlog-docker-updater` 坐标及根 `target/zrlog-updater` 路径。
 - 运行时只引入必要的轻量依赖，不引入 admin、install、blog、数据库或主题模块。
-- Docker 服务的元数据源和清单名来自 `updater-docker-service/src/main/resources/build.properties`。
+- Docker 服务的元数据源和清单名来自 `zrlog-docker-updater/src/main/resources/build.properties`。
 - 修改接口、状态结构和错误处理时核对 base 客户端与 admin 消费者；Native JSON DTO 同步反射注册。
 - 保留已有项目名、卷、端口、网络、环境和 `.env` 内容；替换前验证整个 Compose 配置。
 - 不允许任意镜像或 shell 参数进入 HTTP 接口；拉取失败保留原容器，失败状态不能伪装为成功。
@@ -37,10 +38,12 @@ ZRLOG_UPDATER_REAL_DOCKER=1 ./mvnw -B test
 
 真实 Docker 测试只针对隔离项目；执行前确认允许在测试引擎创建和清理临时容器、卷和镜像。
 CI 在 AMD64、ARM64 原生 Runner 上执行全部测试、Native、ZIP 与容器验证。
-应用构件可独立用 `./mvnw -B -pl '!updater-docker-service' verify` 构建，
+应用构件可独立用 `./mvnw -B -pl '!zrlog-docker-updater' verify` 构建，
 无需 Docker 环境；Native SPI/JSON 冒烟见 `scripts/test-application-modules.sh ... --native`。
 `scripts/test-maven-consumer.sh` 验证临时仓库和空缓存消费；应用构件快照由
 `Application updater modules` 工作流的显式 `publish_snapshots` 开关发布。
+快照发布后必须从 Central 用空缓存获取并比较 POM/JAR；正式构件使用 `central-release`
+profile 附带源码、Javadoc 与签名，并等待 Central published。
 push/PR 只构建验证；发布需显式选择工作流的对应开关。正式版本使用已经存在且匹配版本的
 `vX.Y.Z` tag，镜像和安装包保持不可变。主工程的正式 Release Order 不负责本仓库发版。
 GitHub/dl 字节校验通过后才发布 updater 自身的安装包清单，不能改写应用通道清单。

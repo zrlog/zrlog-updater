@@ -6,21 +6,21 @@
 
 | 模块 | Maven 构件 | 职责 |
 | --- | --- | --- |
-| `updater-spi` | `com.hibegin:zrlog-updater-spi` | 纯 Java 11 契约、升级 DTO、ServiceLoader 入口；无生产依赖。 |
-| `updater-common` | `com.hibegin:zrlog-updater-common` | 清单解析、来源选择、下载校验、共享文件/重启流程与公共文案；依赖 SPI 和 Gson，不注册部署 Provider。 |
-| `updater-zip` | `com.hibegin:zrlog-updater-zip` | JDK ZIP 执行、Provider、ZIP 文案与 Native 元数据。 |
-| `updater-native` | `com.hibegin:zrlog-updater-native` | Native Image 执行、Provider、Native 文案与元数据。 |
-| `updater-war` | `com.hibegin:zrlog-updater-war` | WAR 合并/备份/替换、Provider、WAR 文案与元数据。 |
-| `updater-faas` | `com.hibegin:zrlog-updater-faas` | AWS 签名/S3/Lambda、Provider、FaaS 文案与元数据。 |
-| `updater-docker` | `com.hibegin:zrlog-updater-docker` | Docker 协议客户端、Provider、Docker 文案与元数据。 |
-| `updater-deb` | `com.hibegin:zrlog-updater-deb` | 固定请求/dpkg 安装/持久状态、Provider、deb 文案与元数据。 |
-| `updater-docker-service` | `com.hibegin:zrlog-docker-updater` | 已有 Compose HTTP 服务、Native 程序和镜像；保持独立轻量依赖。 |
+| `zrlog-updater-spi` | `com.hibegin:zrlog-updater-spi` | 纯 Java 11 契约、升级 DTO、ServiceLoader 入口；无生产依赖。 |
+| `zrlog-updater-common` | `com.hibegin:zrlog-updater-common` | 清单解析、来源选择、下载校验、共享文件/重启流程与公共文案；依赖 SPI 和 Gson，不注册部署 Provider。 |
+| `zrlog-updater-zip` | `com.hibegin:zrlog-updater-zip` | JDK ZIP 执行、Provider、ZIP 文案与 Native 元数据。 |
+| `zrlog-updater-native` | `com.hibegin:zrlog-updater-native` | Native Image 执行、Provider、Native 文案与元数据。 |
+| `zrlog-updater-war` | `com.hibegin:zrlog-updater-war` | WAR 合并/备份/替换、Provider、WAR 文案与元数据。 |
+| `zrlog-updater-faas` | `com.hibegin:zrlog-updater-faas` | AWS 签名/S3/Lambda、Provider、FaaS 文案与元数据。 |
+| `zrlog-updater-docker` | `com.hibegin:zrlog-updater-docker` | Docker 协议客户端、Provider、Docker 文案与元数据。 |
+| `zrlog-updater-deb` | `com.hibegin:zrlog-updater-deb` | 固定请求/dpkg 安装/持久状态、Provider、deb 文案与元数据。 |
+| `zrlog-docker-updater` | `com.hibegin:zrlog-docker-updater` | 已有 Compose HTTP 服务、Native 程序和镜像；保持独立轻量依赖。 |
 
 base 通过 SPI 接入实现，主工程按发行方式选入实现构件，admin 独立开发入口通过
 `updater-dev` profile 装配。缺失实现不会影响 SPI 加载，实际请求升级清单时会明确报错。
 迁移 DTO 保留原包名、字段和 SSE 事件名，HTTP 请求继续由应用的已有工具提供。
 
-各 Provider 在自己的 `updater-<类型>/src/main/resources/i18n/updater/<类型>/backend_*.properties` 维护文案；
+各 Provider 在自己的 `zrlog-updater-<类型>/src/main/resources/i18n/updater/<类型>/backend_*.properties` 维护文案；
 检查、下载、重启等共用消息在 common。ZIP、native_image、WAR、FaaS、Docker、deb 的
 语言文件分开，Provider 通过 `messageBundles()` 声明资源，由宿主按语言合并。
 各实现只依赖 common，不相互依赖；ServiceLoader 和 Native 注册随各自 JAR 分发。
@@ -33,9 +33,9 @@ deb 请求固定文件触发 systemd path/oneshot；CLI `upgrade --channel=relea
 `/var/lib/zrlog-updater/status.json`。unit 和可执行文件由主工程打包并归 root 管理。
 
 ```bash
-./mvnw -B -pl '!updater-docker-service' clean install
+./mvnw -B -pl '!zrlog-docker-updater' clean install
 # 单独构建某个实现及其 SPI/common 依赖
-./mvnw -B -pl updater-war -am verify
+./mvnw -B -pl zrlog-updater-war -am verify
 # 包含原 Docker 服务的完整构建和 JAR/JSON/模块边界验证
 ./mvnw -B clean install
 bash scripts/test-application-modules.sh
@@ -49,7 +49,19 @@ bash scripts/test-application-modules.sh
 POM 和 JAR、编译仅依赖 SPI 的消费者，再检查 SPI-only、common-only、每个实现单独加载及完整装配。
 此验证不上传远端制品。维护者显式选择 `publish_snapshots=true` 才向 Central snapshot
 仓库发布 parent/SPI/common 与六类实现；使用组织授权的 `OSSRH_USERNAME`、`OSSRH_PASSWORD`。
-正式版本发布另行推进，应用正式 Release Order 须使用已发布的非 SNAPSHOT 构件。
+所有模块目录名与 Maven `artifactId` 一致。快照包含源码 JAR；发布后工作流使用空缓存
+从 Central 重新获取 POM/JAR，检查 SPI、单独实现和完整装配，并逐个比较发布前后的字节。
+可只读复验已发布快照：
+
+```bash
+bash scripts/test-maven-consumer.sh --central-snapshots 4.0.0-SNAPSHOT
+```
+
+消费者使用 `https://central.sonatype.com/repository/maven-snapshots/` 并启用 snapshots；
+正式版本从默认 Maven Central 获取。正式发布使用匹配 POM `revision` 的已有 `vX.Y.Z` tag，
+由同一工作流运行 `central-release` profile，附带源码、Javadoc 和 GPG 签名，通过 Central
+Portal 发布并等待 published。所需组织凭据另有 `GPG_PRIVATE_KEY` 和 `GPG_PASSPHRASE`。
+应用正式 Release Order 须使用已发布的非 SNAPSHOT 构件。
 
 独立 HTTP 服务，接收后台升级任务，使用 Docker Compose 拉取并替换当前项目的 `zrlog`
 服务。运行时、后台及发布流程已接入源码。已有独立预览镜像可用于部署验证；正式使用仍需
