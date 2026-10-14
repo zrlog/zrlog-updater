@@ -15,6 +15,20 @@ import java.util.Set;
 /** Existing ZrLog metadata rules, discovered through the standalone updater SPI. */
 public final class DefaultUpdateCatalog implements UpdateCatalog {
     @Override
+    public Version readVersion(com.zrlog.updater.spi.UpdateContext context, String channel) throws Exception {
+        String content = context.http.read(metadataUri(context.metadataOrigin, context.manifestFilename, channel));
+        if (content == null || content.trim().isEmpty()) throw new java.io.IOException("Configured update metadata source returned an empty document");
+        Version version = new com.google.gson.Gson().fromJson(content.trim(), Version.class);
+        if (version == null) throw new java.io.IOException("Invalid update manifest");
+        if (context.docker != null) validateDocker(version, channel);
+        version.setArtifactVersion(version.getVersion());
+        version.setChannel(channel);
+        java.util.Date date = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ssXXX").parse(version.getReleaseDate());
+        version.setBuildDate(date);
+        version.setReleaseDate(new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm").format(date));
+        return version;
+    }
+    @Override
     public URI metadataUri(String origin, String filename, String channel) {
         URI base = URI.create(origin.endsWith("/") ? origin : origin + "/");
         if (!"https".equals(base.getScheme()) || base.getHost() == null || base.getUserInfo() != null

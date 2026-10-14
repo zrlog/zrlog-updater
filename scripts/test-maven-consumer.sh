@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 # Publish only to a temporary file repository, then resolve with an empty consumer cache.
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
-version=1.0.0-consumer-test-SNAPSHOT
+version=4.0.0-consumer-test-SNAPSHOT
 ./mvnw -B -ntp -pl updater-spi,updater-core -am \
   "-Drevision=$version" "-Dmaven.repo.local=$work/producer-cache" -DskipTests \
   "-DaltSnapshotDeploymentRepository=updater-test::file://$work/repository" deploy
@@ -31,6 +31,7 @@ EOF
 cat > "$work/consumer/src/main/java/Consumer.java" <<'EOF'
 import com.zrlog.common.vo.Version;
 import com.zrlog.updater.spi.UpdateCatalogs;
+import com.zrlog.updater.spi.UpdateProviders;
 
 public final class Consumer {
     public static void main(String[] args) {
@@ -38,9 +39,16 @@ public final class Consumer {
             if (UpdateCatalogs.load(Consumer.class.getClassLoader()).isPresent()) {
                 throw new AssertionError("An unassembled implementation was discovered");
             }
+            if (UpdateProviders.find(com.zrlog.common.UpdaterTypeEnum.ZIP).isPresent() || !UpdateProviders.messageResources("zh_CN").isEmpty()) {
+                throw new AssertionError("Unassembled providers or messages were discovered");
+            }
             return;
         }
         Version legacy = new Version();
+        for (com.zrlog.common.UpdaterTypeEnum type : com.zrlog.common.UpdaterTypeEnum.values()) UpdateProviders.get(type);
+        for (String resource : UpdateProviders.messageResources("zh_CN")) {
+            if (Consumer.class.getResource(resource) == null) throw new AssertionError("Missing " + resource);
+        }
         legacy.setZipDownloadUrl("https://dl.zrlog.com/release/zrlog.zip");
         String selected = UpdateCatalogs.getInstance().selectPackageSource(legacy, false, "dl");
         if (!selected.equals(legacy.getZipDownloadUrl())) {
@@ -54,4 +62,5 @@ EOF
 spi="$work/consumer-cache/com/hibegin/zrlog-updater-spi/$version/zrlog-updater-spi-$version.jar"
 core="$work/consumer-cache/com/hibegin/zrlog-updater-core/$version/zrlog-updater-core-$version.jar"
 java -cp "$work/consumer/target/classes:$spi" Consumer absent
-java -cp "$work/consumer/target/classes:$spi:$core" Consumer
+gson="$work/consumer-cache/com/google/code/gson/gson/2.14.0/gson-2.14.0.jar"
+java -cp "$work/consumer/target/classes:$spi:$core:$gson" Consumer

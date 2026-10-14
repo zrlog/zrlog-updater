@@ -10,7 +10,30 @@ import com.zrlog.updater.spi.UpdateCatalogs;
 public final class CatalogSmoke {
     public static void main(String[] args) {
         UpdateCatalog catalog = UpdateCatalogs.getInstance();
+        com.zrlog.updater.spi.UpdateContext.Builder context = new com.zrlog.updater.spi.UpdateContext.Builder();
+        context.executable = new java.io.File("zrlog");
+        context.docker = new com.zrlog.updater.spi.DockerConnection("http://localhost", "test_token_123456789012345678901234", "https://dl.zrlog.com", "docker.json");
+        context.http = new com.zrlog.updater.spi.UpdateHttp() {
+            public String read(java.net.URI uri) { throw new AssertionError("No network in Native smoke"); }
+            public int download(java.net.URI uri, java.io.File file) { throw new AssertionError("No download in Native smoke"); }
+            public java.net.http.HttpResponse<String> send(java.net.http.HttpRequest request) { throw new AssertionError("No request in Native smoke"); }
+        };
+        for (com.zrlog.common.UpdaterTypeEnum type : com.zrlog.common.UpdaterTypeEnum.values()) {
+            if (com.zrlog.updater.spi.UpdateProviders.get(type).type() != type) throw new AssertionError("Missing " + type);
+            if (com.zrlog.updater.spi.UpdateProviders.get(type).create(context.build()).getType() != type) throw new AssertionError("Cannot construct " + type);
+        }
+        for (String resource : com.zrlog.updater.spi.UpdateProviders.messageResources("zh_CN")) {
+            try (java.io.InputStream input = CatalogSmoke.class.getResourceAsStream(resource)) {
+                if (input == null) throw new AssertionError("Missing " + resource);
+                java.util.Properties messages = new java.util.Properties(); messages.load(input);
+                if (messages.isEmpty()) throw new AssertionError("Empty " + resource);
+            } catch (java.io.IOException e) { throw new IllegalStateException(e); }
+        }
         Gson gson = new Gson();
+        com.zrlog.updater.spi.DebUpgradeStatus deb = gson.fromJson("{\"stage\":\"complete\",\"requestedAt\":1}", com.zrlog.updater.spi.DebUpgradeStatus.class);
+        if (!"complete".equals(deb.stage) || deb.requestedAt != 1) throw new AssertionError("deb status is not readable");
+        String aws = gson.toJson(new com.zrlog.common.updater.aws.AwsLambdaUpdateCodeRequest("bucket", "key"));
+        if (!aws.contains("bucket")) throw new AssertionError("AWS request is not serializable");
         Version version = gson.fromJson(dockerManifest(), Version.class);
         catalog.validateDocker(version, "release");
         if (!"1234567".equals(version.getBuildId()) || version.getImages().size() != 1) {

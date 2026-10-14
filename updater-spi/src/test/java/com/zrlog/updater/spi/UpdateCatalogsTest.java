@@ -61,6 +61,7 @@ public class UpdateCatalogsTest {
     }
 
     public static class First implements UpdateCatalog {
+        public Version readVersion(UpdateContext context, String channel) { return null; }
         public URI metadataUri(String origin, String filename, String channel) { return URI.create(origin); }
         public void validateDocker(Version version, String channel) { }
         public String selectPackageSource(Version version, boolean war, String source) { return source; }

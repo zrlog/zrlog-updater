@@ -1,17 +1,28 @@
 # ZrLog Updater
 
-应用升级模块与独立 Docker updater 在同一仓库维护。当前完成清单规则和公共 DTO 的
-第一阶段拆分，其他部署方式的执行实现继续逐步迁移。
+应用升级模块与独立 Docker updater 在同一仓库维护。ZIP、Native、WAR、FaaS、Docker
+客户端和 deb 通过 SPI 加载，主工程提供路径、HTTP 与生命周期回调。迁入构件从
+`4.0.0-SNAPSHOT` 开始编号，源码和后续构件版本由本仓库维护。
 
 | 模块 | Maven 构件 | 职责 |
 | --- | --- | --- |
 | `updater-spi` | `com.hibegin:zrlog-updater-spi` | 纯 Java 11 契约、升级 DTO、ServiceLoader 入口；无生产依赖。 |
-| `updater-core` | `com.hibegin:zrlog-updater-core` | 清单路径与 Docker 身份校验、GitHub/dl 来源选择；生产依赖只有 SPI。 |
+| `updater-core` | `com.hibegin:zrlog-updater-core` | 六类升级 Provider、清单解析、下载校验与文案；生产依赖为 SPI 和 Gson。 |
 | `updater-docker-service` | `com.hibegin:zrlog-docker-updater` | 已有 Compose HTTP 服务、Native 程序和镜像；保持独立轻量依赖。 |
 
 base 通过 SPI 接入实现，主工程将 core 放入发行包，admin 独立开发入口通过
 `updater-dev` profile 装配。缺失实现不会影响 SPI 加载，实际请求升级清单时会明确报错。
 迁移 DTO 保留原包名、字段和 SSE 事件名，HTTP 请求继续由应用的已有工具提供。
+
+各 Provider 独立维护 `updater-core/src/main/resources/i18n/updater/<类型>/backend_*.properties`；
+检查、下载、重启等共用消息在 common。ZIP、native_image、WAR、FaaS、Docker、deb 的
+语言文件分开，Provider 通过 `messageBundles()` 声明资源，由宿主按语言合并。
+Native 资源与 Gson/ServiceLoader 注册也在本仓库维护。后台页面文案仍属于 admin。
+
+deb 请求固定文件触发 systemd path/oneshot；CLI `upgrade --channel=release|preview
+--non-interactive --json` 在启动 Web/数据库前执行安装。应用进程不获得 root 权限。
+安装包校验 SHA-256、大小、dpkg 包身份，再确认已安装版本和应用服务恢复；状态写入
+`/var/lib/zrlog-updater/status.json`。unit 和可执行文件由主工程打包并归 root 管理。
 
 ```bash
 ./mvnw -B -pl updater-spi,updater-core -am clean install
@@ -41,7 +52,7 @@ POM 和 JAR、编译仅依赖 SPI 的消费者，再检查有/无 core 的服务
 工作流在 AMD64、ARM64 原生 Runner 上执行真实 Docker 测试、Native HTTP/重启冒烟、
 容器检查，再推送 Docker Hub 与阿里云，验证两边的 digest、签名及匿名拉取。
 
-预览标签为 `1.0.0-preview.<源码短提交>.<运行编号>.<重试次数>`，实际值见工作流摘要和
+预览标签为 `<构件版本>-preview.<源码短提交>.<运行编号>.<重试次数>`，新的版本从 `4.0.0` 开始；实际值见工作流摘要和
 `updater-preview-publication-*` 证据。两个仓库使用相同标签：
 
 - `zrlog/zrlog-updater:<预览标签>`

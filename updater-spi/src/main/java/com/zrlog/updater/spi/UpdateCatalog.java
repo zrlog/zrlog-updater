@@ -11,4 +11,5 @@ public interface UpdateCatalog {
     void validateDocker(Version version, String channel);
 
     String selectPackageSource(Version version, boolean war, String source);
+    Version readVersion(UpdateContext context, String channel) throws Exception;
 }

@@ -1,1 +1,1 @@
-{"resources":{"includes":[{"pattern":"\\QMETA-INF/services/com.zrlog.updater.spi.UpdateCatalog\\E"}]}}
+{"resources":{"includes":[{"pattern":"\\QMETA-INF/services/com.zrlog.updater.spi.UpdateCatalog\\E"},{"pattern":"\\QMETA-INF/services/com.zrlog.updater.spi.UpdateProvider\\E"},{"pattern":"i18n/updater/.*\\.properties"}]}}
