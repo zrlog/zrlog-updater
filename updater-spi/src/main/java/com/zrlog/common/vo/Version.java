@@ -20,6 +20,9 @@ public class Version implements Serializable {
     public void setWarSources(java.util.List<DownloadSource> value) { warSources = value; }
 
     private String artifactVersion;
+    private String debPackageVersion;
+    public String getDebPackageVersion() { return debPackageVersion; }
+    public void setDebPackageVersion(String value) { debPackageVersion = value; }
     private String channel;
     private String packageType;
     private int schemaVersion;
