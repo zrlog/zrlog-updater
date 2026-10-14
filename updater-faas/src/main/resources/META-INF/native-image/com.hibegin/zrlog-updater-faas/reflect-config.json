@@ -1,0 +1,4 @@
+[
+  {"name":"com.zrlog.updater.faas.FaasProvider","methods":[{"name":"<init>","parameterTypes":[]}]}
+  ,{"name":"com.zrlog.common.updater.aws.AwsLambdaUpdateCodeRequest","allDeclaredFields":true,"allDeclaredConstructors":true}
+]

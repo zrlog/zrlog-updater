@@ -1,6 +1,0 @@
-com.zrlog.updater.core.ApplicationUpdateProviders$Zip
-com.zrlog.updater.core.ApplicationUpdateProviders$Native
-com.zrlog.updater.core.ApplicationUpdateProviders$War
-com.zrlog.updater.core.ApplicationUpdateProviders$Faas
-com.zrlog.updater.core.ApplicationUpdateProviders$Docker
-com.zrlog.updater.core.ApplicationUpdateProviders$Deb

@@ -1,0 +1,4 @@
+[
+  {"name":"com.zrlog.updater.deb.DebProvider","methods":[{"name":"<init>","parameterTypes":[]}]}
+  ,{"name":"com.zrlog.updater.spi.DebUpgradeStatus","allDeclaredFields":true,"allDeclaredConstructors":true}
+]

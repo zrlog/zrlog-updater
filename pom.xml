@@ -24,7 +24,13 @@
     </properties>
     <modules>
         <module>updater-spi</module>
-        <module>updater-core</module>
+        <module>updater-common</module>
+        <module>updater-zip</module>
+        <module>updater-native</module>
+        <module>updater-war</module>
+        <module>updater-faas</module>
+        <module>updater-docker</module>
+        <module>updater-deb</module>
         <module>updater-docker-service</module>
     </modules>
     <build><plugins>
