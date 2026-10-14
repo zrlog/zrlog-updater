@@ -21,10 +21,15 @@ base 通过 SPI 接入实现，主工程按发行方式选入实现构件，admi
 迁移 DTO 保留原包名、字段和 SSE 事件名，HTTP 请求继续由应用的已有工具提供。
 
 `com.zrlog.updater.common.UpdaterUtils` 统一部署类型优先级、启动 JAR 识别和创建流程。
-宿主传入实际运行环境、classpath、应用目录和 SPI 创建回调；common 不读取应用全局配置，
-不依赖 base、Web 或各部署实现。主工程的 `ApplicationUpdaterFactory` 只读取宿主环境并
-连接已有 `UpdaterHosts` 适配器。ZIP 启动目标必须有实际 ZrLog Main-Class，重复 classpath
+宿主只传入 `UpdaterRuntime`（运行环境、classpath、应用目录）和 `UpdateContext` 能力。
+`UpdaterUtils.create(runtime, context)` 内部选择部署类型、解析启动文件，经 SPI 自动
+发现并创建 Provider，返回包含解析后上下文和实际实现的 `UpdateSession`，无需创建回调。
+common 不读取应用全局配置，不依赖 base、Web 或各部署实现；base 的 `UpdaterHosts.adapt`
+只包装旧接口，主工程的 `ApplicationUpdaterFactory` 只提供环境和宿主上下文。
+ZIP 启动目标必须有实际 ZrLog Main-Class，重复 classpath
 可去重，多个候选时返回不可用，不把依赖 JAR 当作重启目标。
+Servlet 入口传入 WAR 运行信息后走同一自动装配入口。宿主提供 JDBC 驱动清理回调，
+WAR 实现在停止应用前调用；Docker 装配使用宿主提供的独立镜像清单配置。
 
 升级选择、创建、启动文件识别等测试随实现由本仓库维护。需要实际宿主时，
 `tests/application-host/src/test/java` 维护 Web 工厂、WAR/ZIP 装配和 deb CLI 的验收，

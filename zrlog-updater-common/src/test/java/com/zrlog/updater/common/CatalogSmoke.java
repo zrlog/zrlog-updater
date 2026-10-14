@@ -27,12 +27,13 @@ public final class CatalogSmoke {
             try (java.util.jar.JarOutputStream ignored = new java.util.jar.JarOutputStream(
                     new java.io.FileOutputStream(launcher), manifest)) { }
             for (com.zrlog.common.UpdaterTypeEnum type : com.zrlog.common.UpdaterTypeEnum.values()) {
-                com.zrlog.updater.spi.ApplicationUpdater updater = UpdaterUtils.getUpdater(type, context.executable,
-                        launcher.toString(), home.toFile(), (selected, executable) -> {
-                            com.zrlog.updater.spi.UpdateContext.Builder adapted = new com.zrlog.updater.spi.UpdateContext.Builder(context.build());
-                            adapted.executable = executable;
-                            return com.zrlog.updater.spi.UpdateProviders.get(selected).create(adapted.build());
-                        });
+                UpdaterRuntime runtime = type == com.zrlog.common.UpdaterTypeEnum.WAR ? UpdaterRuntime.servlet(home.toFile())
+                        : new UpdaterRuntime(type == com.zrlog.common.UpdaterTypeEnum.DOCKER,
+                        type == com.zrlog.common.UpdaterTypeEnum.FAAS,
+                        type == com.zrlog.common.UpdaterTypeEnum.DEB ? "deb" : type == com.zrlog.common.UpdaterTypeEnum.WAR ? "war" : "zip",
+                        type == com.zrlog.common.UpdaterTypeEnum.NATIVE_IMAGE, launcher.toString(), home.toFile());
+                com.zrlog.updater.spi.UpdateSession session = UpdaterUtils.create(runtime, context.build());
+                com.zrlog.updater.spi.ApplicationUpdater updater = session == null ? null : session.updater;
                 if (updater == null || updater.getType() != type) throw new AssertionError("Cannot construct " + type);
                 if (type == com.zrlog.common.UpdaterTypeEnum.ZIP && !launcher.getCanonicalFile().equals(updater.execFile())) {
                     throw new AssertionError("ZIP factory did not select the launcher");
