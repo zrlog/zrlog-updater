@@ -20,7 +20,7 @@ base 通过 SPI 接入实现，主工程按发行方式选入实现构件，admi
 `updater-dev` profile 装配。缺失实现不会影响 SPI 加载，实际请求升级清单时会明确报错。
 迁移 DTO 保留原包名、字段和 SSE 事件名，HTTP 请求继续由应用的已有工具提供。
 
-各 Provider 在自己的 `updater-<类型>/src/main/resources/i18n/updater/<类型>/backend_*.properties` 维护文案；
+各 Provider 在自己的 `zrlog-updater-<类型>/src/main/resources/i18n/updater/<类型>/backend_*.properties` 维护文案；
 检查、下载、重启等共用消息在 common。ZIP、native_image、WAR、FaaS、Docker、deb 的
 语言文件分开，Provider 通过 `messageBundles()` 声明资源，由宿主按语言合并。
 各实现只依赖 common，不相互依赖；ServiceLoader 和 Native 注册随各自 JAR 分发。
