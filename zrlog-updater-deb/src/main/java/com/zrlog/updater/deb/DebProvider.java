@@ -11,6 +11,9 @@ import com.zrlog.updater.spi.UpdateRequest;
 public final class DebProvider extends PackageUpdateProvider {
     public DebProvider() { super(UpdaterTypeEnum.DEB, "/i18n/updater/deb/backend"); }
     public ApplicationUpdater create(UpdateContext context) { return new DebPackageUpdater(context); }
+    public UpdateVersionHandler manualHandler(UpdateContext context, UpdateRequest request) {
+        return new ManualDebUpdateVersionHandler(request);
+    }
     public UpdateVersionHandler handler(UpdateContext context, UpdateRequest request) {
         return new DebUpdateVersionHandler(request);
     }

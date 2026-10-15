@@ -15,6 +15,32 @@ import java.util.Set;
 /** Existing ZrLog metadata rules, discovered through the standalone updater SPI. */
 public final class DefaultUpdateCatalog implements UpdateCatalog {
     @Override
+    public com.zrlog.common.updater.UpdateVersionCheckResult checkVersion(
+            com.zrlog.updater.spi.UpdateContext context, boolean preview,
+            java.util.function.Predicate<Version> newer) throws Exception {
+        Version selected = readVersion(context, preview ? "preview" : "release");
+        com.zrlog.common.updater.UpdateChannel channel = preview
+                ? com.zrlog.common.updater.UpdateChannel.PREVIEW : com.zrlog.common.updater.UpdateChannel.RELEASE;
+        boolean available = newer.test(selected);
+        if (!preview || available) {
+            return new com.zrlog.common.updater.UpdateVersionCheckResult(selected, channel, available);
+        }
+        Version release;
+        try {
+            release = readVersion(context, "release");
+        } catch (java.io.FileNotFoundException unpublishedRelease) {
+            return new com.zrlog.common.updater.UpdateVersionCheckResult(selected, channel, false);
+        }
+        if (newer.test(release)) {
+            return new com.zrlog.common.updater.UpdateVersionCheckResult(release,
+                    com.zrlog.common.updater.UpdateChannel.RELEASE, true);
+        }
+        return selected.getBuildDate().after(release.getBuildDate())
+                ? new com.zrlog.common.updater.UpdateVersionCheckResult(selected, channel, false)
+                : new com.zrlog.common.updater.UpdateVersionCheckResult(release,
+                        com.zrlog.common.updater.UpdateChannel.RELEASE, false);
+    }
+    @Override
     public Version readVersion(com.zrlog.updater.spi.UpdateContext context, String channel) throws Exception {
         String content = context.http.read(metadataUri(context.metadataOrigin, context.manifestFilename, channel));
         if (content == null || content.trim().isEmpty()) throw new java.io.IOException("Configured update metadata source returned an empty document");

@@ -67,7 +67,33 @@ public final class CatalogSmoke {
         UpgradeProgressEvent.Data event = gson.fromJson(gson.toJson(
                 UpgradeProgressEvent.data("download", "running", "Downloading", "artifact")), UpgradeProgressEvent.Data.class);
         if (!"artifact".equals(event.getDetail())) { throw new AssertionError("Progress DTO is not readable"); }
-        System.out.println("Updater SPI, metadata and JSON smoke passed");
+        context.docker = null;
+        context.metadataOrigin = "https://dl.example"; context.manifestFilename = "update.json";
+        context.http = new com.zrlog.updater.spi.UpdateHttp() {
+            public String read(java.net.URI uri) throws java.io.IOException {
+                if (uri.getPath().startsWith("/release/")) throw new java.io.FileNotFoundException("HTTP 404");
+                return "{\"version\":\"4.0.0-SNAPSHOT\",\"buildId\":\"1234567\",\"releaseDate\":\"2026-10-14 10:00:00Z\"}";
+            }
+            public int download(java.net.URI uri, java.io.File file) { throw new AssertionError("No download in smoke"); }
+            public java.net.http.HttpResponse<String> send(java.net.http.HttpRequest request) { throw new AssertionError("No request in smoke"); }
+        };
+        var checked = catalog.checkVersion(context.build(), true, value -> false);
+        if (checked.getChannel() != com.zrlog.common.updater.UpdateChannel.PREVIEW || checked.isUpgradeAvailable()) {
+            throw new AssertionError("Optional unpublished release hid the checked preview");
+        }
+        var debProvider = com.zrlog.updater.spi.UpdateProviders.get(com.zrlog.common.UpdaterTypeEnum.DEB);
+        var guidance = debProvider.manualHandler(context.build(), new com.zrlog.updater.spi.UpdateRequest(null,
+                checked.getVersion(), null, null, com.zrlog.common.updater.UpgradeProgressListener.NONE,
+                key -> "Use /etc/init.d/zrlog upgrade"));
+        guidance.doHandle();
+        if (!guidance.isFinish() || !guidance.getMessage().endsWith("upgrade-preview")) {
+            throw new AssertionError("deb guidance did not select the preview command");
+        }
+        if (com.zrlog.updater.spi.UpdateProviders.get(com.zrlog.common.UpdaterTypeEnum.FAAS)
+                .onlineUpgradeSupported(context.build())) {
+            throw new AssertionError("Non-Lambda host cannot perform an online FaaS upgrade");
+        }
+        System.out.println("Updater SPI, version checking, manual guidance and JSON smoke passed");
     }
 
     static String dockerManifest() {

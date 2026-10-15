@@ -17,6 +17,30 @@ import static org.junit.Assert.*;
 
 public class FaasPackageExecutionTest {
     @Rule public TemporaryFolder temporary = new TemporaryFolder();
+    @Test public void providerAvailabilityUsesTheSuppliedLambdaFacts() {
+        UpdateContext.Builder builder = new UpdateContext.Builder();
+        builder.aws = new AwsLambdaUpdateConfig(new AwsCredentials("key", "secret", null), "region", "function", "bucket");
+        assertFalse(new FaasProvider().onlineUpgradeSupported(builder.build()));
+        builder.lambda = true;
+        assertTrue(new FaasProvider().onlineUpgradeSupported(builder.build()));
+        builder.aws = new AwsLambdaUpdateConfig(new AwsCredentials(null, null, null), null, null, null);
+        assertFalse(new FaasProvider().onlineUpgradeSupported(builder.build()));
+    }
+    @Test public void manualGuidancePublishesOneStandardEventWithoutDownloading() {
+        UpdateContext.Builder builder = new UpdateContext.Builder();
+        builder.aws = new AwsLambdaUpdateConfig(new AwsCredentials(null, null, null), null, null, null);
+        Version version = new Version(); version.setZipDownloadUrl("https://example.com/zrlog.zip");
+        java.util.concurrent.atomic.AtomicInteger events = new java.util.concurrent.atomic.AtomicInteger();
+        var handler = new FaasProvider().manualHandler(builder.build(), new UpdateRequest(null, version, null, null,
+                (event, data) -> {
+                    events.incrementAndGet();
+                    assertEquals(com.zrlog.common.updater.UpgradeProgressEvent.EVENT, event);
+                    assertEquals(com.zrlog.common.updater.UpgradeProgressEvent.STAGE_MANUAL, data.getStage());
+                }, key -> key));
+        handler.doHandle(); handler.doHandle();
+        assertTrue(handler.isFinish()); assertEquals(1, events.get());
+        assertTrue(handler.getMessage().contains(version.getZipDownloadUrl()));
+    }
     @Test public void faasManualInstructionsUseHostArchitectureAndBucket() {
         UpdateContext.Builder b = new UpdateContext.Builder(); b.lambda = true; b.fileArch = "Linux-amd64";
         b.aws = new AwsLambdaUpdateConfig(new AwsCredentials(null, null, null), "region", "function", "custom-bucket");

@@ -11,6 +11,12 @@ import com.zrlog.updater.spi.UpdateRequest;
 public final class FaasProvider extends PackageUpdateProvider {
     public FaasProvider() { super(UpdaterTypeEnum.FAAS, "/i18n/updater/faas/backend"); }
     public ApplicationUpdater create(UpdateContext context) { return new HostedUpdater(context, type()); }
+    public boolean onlineUpgradeSupported(UpdateContext context) {
+        return context.lambda && context.aws.missingRequiredFields().isEmpty();
+    }
+    public UpdateVersionHandler manualHandler(UpdateContext context, UpdateRequest request) {
+        return new FaasUpdateVersionHandler(context, request.text, request.version, null, request.progress);
+    }
     public UpdateVersionHandler handler(UpdateContext context, UpdateRequest request) {
         return new FaasUpdateVersionHandler(context, request.text, request.version, request.file, request.progress);
     }

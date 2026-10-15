@@ -15,6 +15,9 @@ public interface DockerControl {
     class RequestException extends IllegalStateException {
         private final int status;
         private final String code;
+        public RequestException(int status) {
+            this(status, status == 401 || status == 403 ? "updater_unauthorized" : "updater_request_failed");
+        }
         public RequestException(int status, String code) {
             super("Docker updater request failed (HTTP " + status + ")"); this.status = status; this.code = code;
         }

@@ -1,6 +1,6 @@
 package com.zrlog.web;
 import com.zrlog.common.UpdaterTypeEnum;
-import com.zrlog.common.updater.UpdaterHosts;
+import com.zrlog.common.adapter.UpdaterHosts;
 import com.zrlog.common.vo.Version;
 import com.zrlog.updater.spi.*;
 import org.junit.Test;
@@ -9,7 +9,7 @@ import static org.junit.Assert.*;
 public class ApplicationUpgradeRunnerTest {
     @Test public void debCommandDelegatesBeforeVersionPluginAndPreservesExitCode() {
         FakeDeb deb = new FakeDeb();
-        UpdaterHosts.DelegatingUpdater host = new UpdaterHosts.DelegatingUpdater(new UpdateContext.Builder().build(), deb);
+        com.zrlog.common.Updater host = UpdaterHosts.adapt(new UpdateSession(new UpdateContext.Builder().build(), deb));
         assertEquals(7, ApplicationUpgradeRunner.run(host, true, true));
         assertEquals("preview", deb.channel); assertTrue(deb.json);
     }

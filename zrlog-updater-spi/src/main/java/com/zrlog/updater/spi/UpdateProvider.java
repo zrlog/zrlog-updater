@@ -8,6 +8,10 @@ public interface UpdateProvider {
     UpdaterTypeEnum type();
     ApplicationUpdater create(UpdateContext context);
     UpdateVersionHandler handler(UpdateContext context, UpdateRequest request);
+    default boolean onlineUpgradeSupported(UpdateContext context) { return true; }
+    default UpdateVersionHandler manualHandler(UpdateContext context, UpdateRequest request) {
+        throw new UnsupportedOperationException("Manual upgrade guidance is not supplied for " + type());
+    }
     File download(UpdateContext context, UpdateRequest request) throws Exception;
     boolean invalidPackage(File file, long length, String sha256, String md5);
     String checksum(File file, String algorithm) throws Exception;
