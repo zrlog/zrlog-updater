@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -18,12 +19,18 @@ final class ApiServer implements AutoCloseable {
     private final UpgradeService upgrades;
     private final byte[] authorization;
     private final ThreadPoolExecutor executor;
+    private final Map<String, String> environment;
 
     ApiServer(InetSocketAddress address, String token, UpgradeService upgrades) throws IOException {
+        this(address, token, upgrades, System.getenv());
+    }
+
+    ApiServer(InetSocketAddress address, String token, UpgradeService upgrades, Map<String, String> environment) throws IOException {
         if (token == null || token.length() < 32 || token.length() > 256 || !token.matches("[A-Za-z0-9_-]+")) {
             throw new IllegalArgumentException("UPDATER_TOKEN must contain 32–256 URL-safe characters");
         }
         this.upgrades = upgrades;
+        this.environment = Map.copyOf(environment);
         authorization = ("Bearer " + token).getBytes(StandardCharsets.UTF_8);
         server = HttpServer.create(address, 16);
         executor = new ThreadPoolExecutor(4, 4, 0, TimeUnit.SECONDS, new ArrayBlockingQueue<>(32));
@@ -45,13 +52,13 @@ final class ApiServer implements AutoCloseable {
             }
             if (exchange.getRequestURI().getRawQuery() != null) { throw ApiException.invalid("Query parameters are not supported"); }
             if ("/v1/capabilities".equals(path) && "GET".equals(method)) { send(exchange, 200, upgrades.capabilities()); }
-            else if ("/v1/settings".equals(path) && "GET".equals(method)) { send(exchange, 200, upgrades.settings("release")); }
-            else if ("/v1/settings/preview".equals(path) && "GET".equals(method)) { send(exchange, 200, upgrades.settings("preview")); }
+            else if ("/v1/settings".equals(path) && "GET".equals(method)) { send(exchange, 200, upgrades.settings("release", proxy(exchange))); }
+            else if ("/v1/settings/preview".equals(path) && "GET".equals(method)) { send(exchange, 200, upgrades.settings("preview", proxy(exchange))); }
             else if ("/v1/settings".equals(path) && "PUT".equals(method)) {
-                send(exchange, 200, upgrades.saveSettings(body(exchange, Protocol.Settings.class, Set.of("repository", "channel"))));
+                send(exchange, 200, upgrades.saveSettings(body(exchange, Protocol.Settings.class, Set.of("repository", "channel")), proxy(exchange)));
             } else if ("/v1/upgrades".equals(path) && "POST".equals(method)) {
                 Protocol.Job job = upgrades.submit(body(exchange, Protocol.UpgradeRequest.class,
-                        Set.of("requestId", "channel", "version", "buildId")));
+                        Set.of("requestId", "channel", "version", "buildId")), proxy(exchange));
                 send(exchange, job.terminal() ? 200 : 202, job);
             } else if (path.matches("/v1/upgrades/[A-Za-z0-9_-]{16,80}") && "GET".equals(method)) {
                 send(exchange, 200, upgrades.status(path.substring("/v1/upgrades/".length())));
@@ -59,6 +66,10 @@ final class ApiServer implements AutoCloseable {
         } catch (ApiException error) { send(exchange, error.status, new Protocol.ErrorResponse(error.code, error.getMessage())); }
         catch (Exception error) { send(exchange, 503, new Protocol.ErrorResponse("updater_unavailable", "Updater could not complete this request")); }
         finally { exchange.close(); }
+    }
+
+    private OutboundProxy proxy(HttpExchange exchange) {
+        return OutboundProxy.from(exchange.getRequestHeaders(), environment);
     }
 
     private <T> T body(HttpExchange exchange, Class<T> type, Set<String> fields) throws IOException {

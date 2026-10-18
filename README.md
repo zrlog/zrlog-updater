@@ -78,7 +78,7 @@ POM 和 JAR、编译仅依赖 SPI 的消费者，再检查 SPI-only、common-onl
 可只读复验已发布快照：
 
 ```bash
-bash scripts/test-maven-consumer.sh --central-snapshots 4.0.0-SNAPSHOT
+bash scripts/test-maven-consumer.sh --central-snapshots 4.0.1-SNAPSHOT
 ```
 
 消费者使用 `https://central.sonatype.com/repository/maven-snapshots/` 并启用 snapshots；
@@ -201,6 +201,25 @@ updater 需要 Docker socket 管理权限，以及部署目录写权限以原子
 
 除 `GET /health` 外，所有接口要求 `Authorization: Bearer <ZRLOG_UPDATER_TOKEN>`。
 写请求要求 `Content-Type: application/json`，最大 4096 字节。所有响应禁止缓存。
+
+应用与 updater 之间的控制请求直连 Docker 内网。应用可在认证请求中转发当前生效的
+出网代理配置，供 updater 获取更新清单；这些配置只在当前请求中使用，不写入状态文件，
+也不会转发到清单源或浏览器响应。请求头与环境变量的对应关系如下：
+
+| 可选请求头 | updater 环境变量 |
+| --- | --- |
+| `X-ZrLog-HTTP-Proxy` | `HTTP_PROXY` / `http_proxy` |
+| `X-ZrLog-HTTPS-Proxy` | `HTTPS_PROXY` / `https_proxy` |
+| `X-ZrLog-No-Proxy` | `NO_PROXY` / `no_proxy` |
+
+updater 的环境变量逐项优先于请求头，同名变量小写优先；空值可显式停用该协议的代理。
+未提供某项配置时保留 updater 已有的 JVM 网络策略。代理地址仅支持不带账号密码的
+`http://主机:端口`，HTTPS 清单通过 CONNECT 获取并正常校验证书；直连例外支持逗号
+分隔的主机名、IP 和域名模式，不支持端口或 CIDR。代理故障不会自动回退直连。
+代理地址必须能从 updater 容器访问，`127.0.0.1` 指向 updater 容器自身。
+
+镜像下载由宿主 Docker 引擎执行，向 Docker CLI 传递代理环境变量不会配置引擎代理。
+镜像拉取需要代理时，请配置 Docker 引擎；应用和 updater 都不会改写宿主的 Docker 配置。
 
 | 请求 | 响应 |
 | --- | --- |

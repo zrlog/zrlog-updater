@@ -2,6 +2,7 @@ package com.zrlog.web;
 
 import com.zrlog.common.Updater;
 import com.zrlog.common.UpdaterTypeEnum;
+import com.zrlog.common.adapter.UpdaterHosts;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -30,8 +31,8 @@ public class ApplicationUpdaterFactoryTest {
             assertNotNull(updater);
             assertEquals(UpdaterTypeEnum.ZIP, updater.getType());
             assertEquals(launcher.getCanonicalFile(), updater.execFile());
-            assertEquals(launcher.getCanonicalFile(), com.zrlog.common.adapter.UpdaterHosts.context(updater).executable);
-            assertArrayEquals(arguments, com.zrlog.common.adapter.UpdaterHosts.context(updater).arguments);
+            assertEquals(launcher.getCanonicalFile(), UpdaterHosts.context(updater).executable);
+            assertArrayEquals(arguments, UpdaterHosts.context(updater).arguments);
         } finally {
             System.setProperty("java.class.path", original);
         }

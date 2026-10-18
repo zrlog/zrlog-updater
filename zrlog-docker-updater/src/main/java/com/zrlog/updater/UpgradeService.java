@@ -34,23 +34,31 @@ final class UpgradeService implements AutoCloseable {
     }
 
     synchronized Protocol.SettingsResponse settings(String channel) throws Exception {
+        return settings(channel, new OutboundProxy(null, null, null));
+    }
+
+    synchronized Protocol.SettingsResponse settings(String channel, OutboundProxy proxy) throws Exception {
         available();
         Metadata.channel(channel);
         Deployment.Target target = deployment.inspect();
         Protocol.SettingsResponse response = new Protocol.SettingsResponse();
         response.settings = store.snapshot().settings;
         response.currentRepository = Metadata.repositoryOfImage(target.image);
-        response.images = metadata.fetch(channel).images.stream().filter(image -> image.platforms.contains(target.platform)).toList();
+        response.images = metadata.fetch(channel, proxy).images.stream().filter(image -> image.platforms.contains(target.platform)).toList();
         return response;
     }
 
     synchronized Protocol.Settings saveSettings(Protocol.Settings settings) throws Exception {
+        return saveSettings(settings, new OutboundProxy(null, null, null));
+    }
+
+    synchronized Protocol.Settings saveSettings(Protocol.Settings settings, OutboundProxy proxy) throws Exception {
         available();
         Metadata.channel(settings.channel);
         if (settings.repository == null) { throw ApiException.invalid("repository is required"); }
         Deployment.Target target = deployment.inspect();
         settings.repository = settings.repository.isBlank() ? "" : Metadata.repository(settings.repository);
-        Metadata.select(metadata.fetch(settings.channel), selectedRepository(settings, target), target.platform);
+        Metadata.select(metadata.fetch(settings.channel, proxy), selectedRepository(settings, target), target.platform);
         Protocol.State next = store.snapshot();
         next.settings = Json.copy(settings, Protocol.Settings.class);
         save(next);
@@ -58,6 +66,10 @@ final class UpgradeService implements AutoCloseable {
     }
 
     synchronized Protocol.Job submit(Protocol.UpgradeRequest request) throws Exception {
+        return submit(request, new OutboundProxy(null, null, null));
+    }
+
+    synchronized Protocol.Job submit(Protocol.UpgradeRequest request, OutboundProxy proxy) throws Exception {
         available();
         if (request.requestId == null || !request.requestId.matches("[a-zA-Z0-9][a-zA-Z0-9_-]{15,79}")) {
             throw ApiException.invalid("requestId must be a unique 16–80 character identifier");
@@ -79,7 +91,7 @@ final class UpgradeService implements AutoCloseable {
         if (state.jobs.size() >= 1000) {
             throw new ApiException(409, "history_full", "Archive the updater state before submitting more upgrades");
         }
-        Protocol.Manifest manifest = metadata.fetch(request.channel);
+        Protocol.Manifest manifest = metadata.fetch(request.channel, proxy);
         if (!Objects.equals(manifest.version, request.version) || !Objects.equals(manifest.buildId, request.buildId)) {
             throw new ApiException(409, "version_changed", "The available version changed; check for updates again");
         }

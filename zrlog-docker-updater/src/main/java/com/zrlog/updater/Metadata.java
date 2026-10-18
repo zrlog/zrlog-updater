@@ -21,11 +21,16 @@ import java.util.concurrent.Flow;
 
 final class Metadata {
     interface Fetcher { String get(URI uri) throws Exception; }
+    private interface ProxyFetcher { String get(URI uri, OutboundProxy proxy) throws Exception; }
     final URI base;
     final String filename;
-    private final Fetcher fetcher;
+    private final ProxyFetcher fetcher;
 
     Metadata(Properties properties, Fetcher fetcher) {
+        this(properties, (uri, proxy) -> fetcher.get(uri));
+    }
+
+    private Metadata(Properties properties, ProxyFetcher fetcher) {
         String configuredBase = properties.getProperty("mirrorWebSite", "https://dl.zrlog.com/");
         base = URI.create(configuredBase.endsWith("/") ? configuredBase : configuredBase + "/");
         if (!"https".equals(base.getScheme()) || base.getHost() == null || base.getUserInfo() != null
@@ -45,16 +50,31 @@ final class Metadata {
             if (stream == null) { throw new IOException("Missing build.properties"); }
             properties.load(stream);
         }
-        HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10))
-                .followRedirects(HttpClient.Redirect.NEVER).build();
-        return new Metadata(properties, uri -> {
+        return fromProperties(properties);
+    }
+
+    static Metadata fromProperties(Properties properties) {
+        return new Metadata(properties, new HttpFetcher()::get);
+    }
+
+    private static final class HttpFetcher {
+        private HttpClient client;
+        private OutboundProxy policy;
+
+        synchronized String get(URI uri, OutboundProxy proxy) throws Exception {
+            if (client == null || !proxy.equals(policy)) {
+                if (client != null) client.close();
+                client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10))
+                        .proxy(proxy.selector()).followRedirects(HttpClient.Redirect.NEVER).build();
+                policy = proxy;
+            }
             HttpRequest request = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(20))
                     .header("Accept", "application/json").GET().build();
             // BodyHandlers.ofByteArray is bounded by a subscriber: a server cannot stream an unlimited manifest.
             HttpResponse<byte[]> response = client.send(request, limitedBody(1024 * 1024));
             if (response.statusCode() != 200) { throw new IOException("Metadata HTTP " + response.statusCode()); }
             return new String(response.body(), StandardCharsets.UTF_8);
-        });
+        }
     }
 
     static HttpResponse.BodyHandler<byte[]> limitedBody(int maxBytes) {
@@ -82,8 +102,12 @@ final class Metadata {
     URI uri(String channel) { channel(channel); return base.resolve(channel + "/" + filename); }
 
     Protocol.Manifest fetch(String channel) {
+        return fetch(channel, new OutboundProxy(null, null, null));
+    }
+
+    Protocol.Manifest fetch(String channel, OutboundProxy proxy) {
         try {
-            String document = fetcher.get(uri(channel));
+            String document = fetcher.get(uri(channel), proxy);
             if (document.length() > 1024 * 1024) { throw new IllegalArgumentException("Manifest too large"); }
             Protocol.Manifest manifest = Json.read(document, Protocol.Manifest.class);
             validate(manifest, channel);
