@@ -19,6 +19,9 @@ public abstract class PackageUpdateProvider implements UpdateProvider {
     public final List<String> messageBundles() {
         return List.of("/i18n/updater/common/backend", messageBundle);
     }
+    public com.zrlog.updater.spi.UpdateOperations operations(UpdateContext context, com.zrlog.updater.spi.ApplicationUpdater updater) {
+        return new PackageUpdateOperations(context, updater, this);
+    }
     public File download(UpdateContext context, UpdateRequest request) throws Exception {
         return PackageFiles.download(context, request);
     }

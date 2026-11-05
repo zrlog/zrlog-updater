@@ -1,3 +1,16 @@
 [
-  {"name":"com.zrlog.updater.common.DefaultUpdateCatalog","methods":[{"name":"<init>","parameterTypes":[]}]}
+  {
+    "name": "com.zrlog.updater.common.DefaultUpdateCatalog",
+    "methods": [
+      {
+        "name": "<init>",
+        "parameterTypes": []
+      }
+    ]
+  },
+  {
+    "name": "com.zrlog.updater.common.PackageUpdateOperations$Record",
+    "allDeclaredFields": true,
+    "allDeclaredConstructors": true
+  }
 ]

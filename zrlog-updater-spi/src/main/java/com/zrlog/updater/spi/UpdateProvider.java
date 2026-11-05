@@ -7,10 +7,17 @@ import java.io.File;
 public interface UpdateProvider {
     UpdaterTypeEnum type();
     ApplicationUpdater create(UpdateContext context);
+    default UpdateOperations operations(UpdateContext context, ApplicationUpdater updater) {
+        throw new UnsupportedOperationException("Upgrade operations are not supplied for " + type());
+    }
     UpdateVersionHandler handler(UpdateContext context, UpdateRequest request);
     default boolean onlineUpgradeSupported(UpdateContext context) { return true; }
     default UpdateVersionHandler manualHandler(UpdateContext context, UpdateRequest request) {
-        throw new UnsupportedOperationException("Manual upgrade guidance is not supplied for " + type());
+        return new UpdateVersionHandler() {
+            public void doHandle() { }
+            public boolean isFinish() { return false; }
+            public String getMessage() { return request.text.apply("upgrade.error.unsupportedRuntime"); }
+        };
     }
     File download(UpdateContext context, UpdateRequest request) throws Exception;
     boolean invalidPackage(File file, long length, String sha256, String md5);

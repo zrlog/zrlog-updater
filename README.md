@@ -28,7 +28,14 @@ common 不读取应用全局配置，不依赖 base、Web 或各部署实现。
 base 的 `com.zrlog.common.adapter.UpdaterHosts.adapt` 只包装旧接口，
 定时检查由 base service 业务层调度；主工程的 `ApplicationUpdaterFactory` 只提供环境和宿主上下文。
 base 不再保留 ZIP/Native/WAR updater、分类型 handler 或 Docker 客户端兼容壳；
-admin 直接消费 `DockerControl`。通道回退规则由 common 的 catalog 维护，
+admin 和自动升级统一消费 `UpdateOperations` 的能力、提交、状态、订阅和升级源设置。
+`DockerControl` 及 Docker 阶段转换只由 Docker Provider 使用，前端不调用 Docker 专用接口；
+部署相关进度、失败原因、恢复建议和设置文案由 Provider 返回。
+`UpdateCommand` 固定请求 ID、版本、buildId 和通道；JSON/SSE 共用 `UpdateTask`。
+Docker 任务保存在独立 updater 服务，包升级回执保存在下载目录旁的 `update-temp-tasks`，
+避免 Native 替换时被清理。读取状态不会重新提交；重启后还需核对实际运行的 buildId。
+FaaS 临时磁盘可能丢失回执，前端先核对运行版本，未确认的任务仅由用户显式重试。
+通道回退规则由 common 的 catalog 维护，
 宿主传入与当前运行版本比较的能力；手动升级指引与在线能力由各 Provider 提供。
 ZIP 启动目标必须有实际 ZrLog Main-Class，重复 classpath
 可去重，多个候选时返回不可用，不把依赖 JAR 当作重启目标。
@@ -291,6 +298,6 @@ ZRLOG_UPDATER_REAL_DOCKER=1 ./mvnw test
 
 本仓库维护应用升级 SPI/common/分类型实现、独立 Docker 服务及其构建、安装包、镜像。
 主工程装配应用构件，维护博客应用的 Docker 镜像、应用清单和 Compose 集成；base 保留
-宿主 HTTP 适配和迁移期兼容入口，原有部署升级执行实现按任务逐步迁入；admin 提供
+宿主 HTTP 适配和兼容入口；部署升级执行及任务协议由各 Provider 维护，admin 提供
 设置、鉴权和标准 SSE 进度页面。
 updater 不引入页面、数据库、安装器或主题模块。

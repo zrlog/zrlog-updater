@@ -53,6 +53,15 @@ public final class CatalogSmoke {
         Gson gson = new Gson();
         com.zrlog.updater.spi.DebUpgradeStatus deb = gson.fromJson("{\"stage\":\"complete\",\"requestedAt\":1}", com.zrlog.updater.spi.DebUpgradeStatus.class);
         if (!"complete".equals(deb.stage) || deb.requestedAt != 1) throw new AssertionError("deb status is not readable");
+        var command = gson.fromJson("{\"requestId\":\"native-task-123456\",\"version\":\"4.0.2\",\"buildId\":\"target-build\",\"channel\":\"release\"}", com.zrlog.updater.spi.UpdateCommand.class);
+        command.validate();
+        var receipt = gson.fromJson("{\"task\":{\"id\":\"native-task-123456\",\"version\":\"4.0.2\",\"buildId\":\"target-build\",\"channel\":\"release\",\"state\":\"running\",\"awaitingRestart\":true}}", PackageUpdateOperations.Record.class);
+        if (!receipt.task.matches(command) || !gson.toJson(receipt).contains("awaitingRestart")) throw new AssertionError("Task receipt JSON failed");
+        var source = gson.fromJson("{\"label\":\"Source\",\"options\":[{\"value\":\"dl\",\"label\":\"Download\"}]}", com.zrlog.updater.spi.UpdateSourceSettings.class);
+        if (!"dl".equals(source.options.get(0).value)) throw new AssertionError("Source settings JSON failed");
+        var availability = gson.fromJson("{\"online\":true}", com.zrlog.updater.spi.UpdateAvailability.class);
+        var messages = gson.fromJson("{\"restoring\":\"Restoring\"}", com.zrlog.updater.spi.UpdateTaskMessages.class);
+        if (!availability.online || !"Restoring".equals(messages.restoring)) throw new AssertionError("Upgrade presentation JSON failed");
         String aws;
         try {
             Class<?> request = Class.forName("com.zrlog.common.updater.aws.AwsLambdaUpdateCodeRequest");

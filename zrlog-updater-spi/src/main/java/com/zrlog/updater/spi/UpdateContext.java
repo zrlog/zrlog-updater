@@ -22,6 +22,7 @@ public final class UpdateContext {
     public final Runnable releaseJdbcDrivers;
     public final IntConsumer exit;
     public final UpdateHttp http;
+    public final java.util.function.Supplier<String> currentBuildId;
     public final DockerConnection docker;
     public final File debRequests, debState, debWork;
     public final String packageName, serviceName;
@@ -33,7 +34,7 @@ public final class UpdateContext {
         fileArch = b.fileArch; metadataOrigin = b.metadataOrigin; manifestFilename = b.manifestFilename;
         packageSource = b.packageSource; lambda = b.lambda; aws = b.aws;
         bundledTheme = b.bundledTheme; stop = b.stop; releaseJdbcDrivers = b.releaseJdbcDrivers;
-        exit = b.exit; http = b.http; docker = b.docker;
+        exit = b.exit; http = b.http; docker = b.docker; currentBuildId = b.currentBuildId;
         debRequests = b.debRequests; debState = b.debState; debWork = b.debWork;
         packageName = b.packageName; serviceName = b.serviceName;
     }
@@ -46,7 +47,7 @@ public final class UpdateContext {
             arguments=c.arguments; jvmArguments=c.jvmArguments; port=c.port; currentPort=c.currentPort;
             fileArch=c.fileArch; metadataOrigin=c.metadataOrigin; manifestFilename=c.manifestFilename; packageSource=c.packageSource;
             lambda=c.lambda; aws=c.aws; bundledTheme=c.bundledTheme; stop=c.stop; releaseJdbcDrivers=c.releaseJdbcDrivers;
-            exit=c.exit; http=c.http; docker=c.docker;
+            exit=c.exit; http=c.http; docker=c.docker; currentBuildId=c.currentBuildId;
             debRequests=c.debRequests; debState=c.debState; debWork=c.debWork; packageName=c.packageName; serviceName=c.serviceName;
         }
         public File root = new File("."), temp = new File("temp"), updateTemp = new File("conf/update-temp"), executable;
@@ -62,6 +63,7 @@ public final class UpdateContext {
         public Runnable releaseJdbcDrivers = () -> { };
         public IntConsumer exit = System::exit;
         public UpdateHttp http;
+        public java.util.function.Supplier<String> currentBuildId = () -> "";
         public DockerConnection docker;
         public File debRequests = new File("/var/lib/zrlog/upgrade-request");
         public File debState = new File("/var/lib/zrlog-updater");

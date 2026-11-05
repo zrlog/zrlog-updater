@@ -14,6 +14,13 @@ public final class DockerProvider extends PackageUpdateProvider {
     }
     public DockerProvider() { super(UpdaterTypeEnum.DOCKER, "/i18n/updater/docker/backend"); }
     public ApplicationUpdater create(UpdateContext context) { return new DockerImageUpdater(context); }
+    public com.zrlog.updater.spi.UpdateOperations operations(UpdateContext context, ApplicationUpdater updater) {
+        return new DockerUpdateOperations(context, updater instanceof com.zrlog.updater.spi.DockerControl
+                ? (com.zrlog.updater.spi.DockerControl) updater : null);
+    }
+    public boolean onlineUpgradeSupported(UpdateContext context) {
+        return operations(context, null).availability(java.util.function.Function.identity()).online;
+    }
     public UpdateVersionHandler handler(UpdateContext context, UpdateRequest request) {
         return new ManualUpdateVersionHandler(request.text.apply("upgrade.tips.docker"));
     }
